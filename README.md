@@ -1,5 +1,16 @@
 # kantoku(監督)
 
+kantoku は、2人から学んで作りました。
+
+- [poteto](https://x.com/poteto) さんの [pstack](https://github.com/cursor/plugins/tree/main/pstack)。監督のしかた(検証役を分ける・最初は1件だけ通す・原因に合わせてやり直す)を、その Orchestrate の手順から学びました。
+- Grok Bot の開発に携わる [Lee Robinson(leerob)](https://leerob.com/) さん。常駐して動き続けるエージェントの作りの話に感銘を受けました。
+
+この2つを、自分の [Orca](https://github.com/stablyai/orca) 環境で組み立ててみたくて作ったのが kantoku です。
+
+> English: kantoku is inspired by [poteto](https://x.com/poteto)'s [pstack](https://github.com/cursor/plugins/tree/main/pstack), whose Orchestrate playbook taught me how to supervise agents, and by [Lee Robinson (leerob)](https://leerob.com/), whose talk on how Grok Bot's always-on agent is built made me want to build the same idea on my own Orca setup.
+
+## kantoku とは
+
 Claude Code のセッションを1つ「監督」にして、実際の仕事は [Orca](https://github.com/stablyai/orca) の子セッションに配る skill です。
 あなたは監督にタスクを渡すだけ。監督は子に配り、子からの質問を仕分け、別の子に検証させ、終わるまで見回ります。
 
@@ -63,10 +74,6 @@ Claude Code のセッションを1つ「監督」にして、実際の仕事は 
 
 - `/config` で auto-compact をオンにしてください。監督の会話が上限に届いても止まらなくなります。
 - skill 本体は [`skills/kantoku/SKILL.md`](./skills/kantoku/SKILL.md) です。
-
-## 謝辞
-
-監督のしかた(検証役・最初は1件・原因別のやり直しなど)は、poteto さんの [pstack](https://github.com/cursor/plugins/tree/main/pstack) の Orchestrate playbook から学びました。
 
 ## ライセンス
 
