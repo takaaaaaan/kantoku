@@ -53,6 +53,35 @@ kantoku is that attempt.
 
 Claude Code prefixes plugin skills, so the skill is `/kantoku:kantoku`.
 
+### Keep it up to date
+
+Claude Code leaves auto-update off for third-party marketplaces, so kantoku stays on the version you installed. The same applies to pstack.
+
+- **Turn on auto-update:** run `/plugin`, open the **Marketplaces** tab, select `kantoku` (and `cursor-plugins` for pstack), and choose **Enable auto-update**.
+- **Or set it in `~/.claude/settings.json`:**
+
+  ```json
+  {
+    "extraKnownMarketplaces": {
+      "kantoku": {
+        "source": { "source": "github", "repo": "takaaaaaan/kantoku" },
+        "autoUpdate": true
+      },
+      "cursor-plugins": {
+        "source": { "source": "github", "repo": "cursor/plugins" },
+        "autoUpdate": true
+      }
+    }
+  }
+  ```
+
+- **Update once by hand:**
+
+  ```bash
+  claude plugin update kantoku@kantoku
+  claude plugin update pstack@cursor-plugins
+  ```
+
 ## Usage
 
 1. Open Claude Code in an Orca terminal and run `/kantoku:kantoku <name>`, for example `/kantoku:kantoku infra`.
