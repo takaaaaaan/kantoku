@@ -1,0 +1,12 @@
+{
+  "name": "kantoku",
+  "version": "0.1.0",
+  "description": "Turn one Claude Code session into a manager (kantoku = 監督) that dispatches tasks to Orca child sessions, triages their questions, verifies their work with a separate verifier, and patrols until done.",
+  "author": {
+    "name": "takaaaaaan"
+  },
+  "homepage": "https://github.com/takaaaaaan/kantoku",
+  "repository": "https://github.com/takaaaaaan/kantoku",
+  "license": "MIT",
+  "keywords": ["orca", "orchestration", "manager", "multi-agent", "supervisor"]
+}

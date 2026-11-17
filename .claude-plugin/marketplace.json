@@ -1,0 +1,13 @@
+{
+  "name": "kantoku",
+  "owner": {
+    "name": "takaaaaaan"
+  },
+  "plugins": [
+    {
+      "name": "kantoku",
+      "source": "./",
+      "description": "A manager session that dispatches work to Orca child sessions and supervises them."
+    }
+  ]
+}
