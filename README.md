@@ -51,36 +51,9 @@ kantoku is that attempt.
 /plugin install kantoku@kantoku
 ```
 
+Claude Code leaves auto-update off for third-party marketplaces, so kantoku stays on the version you installed. To turn it on, run `/plugin`, open the **Marketplaces** tab, select `kantoku`, and choose **Enable auto-update**. To update once by hand, run `claude plugin update kantoku@kantoku`.
+
 Claude Code prefixes plugin skills, so the skill is `/kantoku:kantoku`.
-
-### Keep it up to date
-
-Claude Code leaves auto-update off for third-party marketplaces, so kantoku stays on the version you installed. The same applies to pstack.
-
-- **Turn on auto-update:** run `/plugin`, open the **Marketplaces** tab, select `kantoku` (and `cursor-plugins` for pstack), and choose **Enable auto-update**.
-- **Or set it in `~/.claude/settings.json`:**
-
-  ```json
-  {
-    "extraKnownMarketplaces": {
-      "kantoku": {
-        "source": { "source": "github", "repo": "takaaaaaan/kantoku" },
-        "autoUpdate": true
-      },
-      "cursor-plugins": {
-        "source": { "source": "github", "repo": "cursor/plugins" },
-        "autoUpdate": true
-      }
-    }
-  }
-  ```
-
-- **Update once by hand:**
-
-  ```bash
-  claude plugin update kantoku@kantoku
-  claude plugin update pstack@cursor-plugins
-  ```
 
 ## Usage
 
