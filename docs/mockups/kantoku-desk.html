@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kantoku desk</title>
+<!-- Mockup only. All data below is made up. No external loads. -->
+<style>
+/* Layout: bot list on the left, one bot's reports as a chat on the right,
+   and an info sheet that slides in when you press the bot's name. */
+:root {
+  --bg: #f2f5f7;
+  --panel: #ffffff;
+  --ink: #1f2a33;
+  --muted: #6b7a86;
+  --line: #e3e9ee;
+  --select: #e9f1f7;
+  --wait: #ff8a3d;
+  --wait-soft: #fff1e6;
+  --work: #3aa676;
+  --bubble: #ffffff;
+  --shadow: 0 1px 2px rgba(31, 42, 51, .06), 0 4px 16px rgba(31, 42, 51, .06);
+  --font: "Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 18px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
+    --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
+    --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
+  --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
+  --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+
+.desk { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
+
+/* ---------- left: bot list ---------- */
+.side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 12px; font-weight: 700; font-size: 16px; }
+.brand small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.bots { list-style: none; margin: 0; padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.bot-row { width: 100%; display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center;
+  padding: 10px; border: 0; background: none; border-radius: 14px; text-align: left; cursor: pointer; }
+.bot-row:hover { background: var(--select); }
+.bot-row[aria-current="true"] { background: var(--select); }
+.bot-row .name { font-weight: 700; }
+.bot-row .say { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bot-row > div { min-width: 0; }
+.wait-pill { background: var(--wait); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.side-foot { margin-top: auto; padding: 14px 18px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+
+/* ---------- face icon ---------- */
+.face { position: relative; width: 44px; height: 44px; border-radius: 50%; background: var(--c); flex: none; }
+.face.big { width: 64px; height: 64px; }
+.face svg { width: 100%; height: 100%; display: block; }
+.face .dot { position: absolute; right: -1px; bottom: -1px; width: 14px; height: 14px; border-radius: 50%;
+  border: 3px solid var(--panel); background: var(--muted); }
+.face .dot.work { background: var(--work); }
+.face .dot.wait { background: var(--wait); }
+
+/* ---------- right: chat ---------- */
+.main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.head { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.head-name { border: 0; background: none; padding: 4px 10px 4px 4px; border-radius: 99px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.head-name:hover { background: var(--select); }
+.head-name strong { font-size: 16px; }
+.head-name .chev { color: var(--muted); font-size: 12px; }
+.head .state { color: var(--muted); font-size: 13px; }
+
+.chat { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+.day { align-self: center; color: var(--muted); font-size: 12px; background: var(--panel); padding: 2px 12px; border-radius: 99px; border: 1px solid var(--line); }
+.msg { display: grid; grid-template-columns: 36px 1fr; gap: 10px; max-width: 640px; }
+.msg .face { width: 36px; height: 36px; }
+.bubble { background: var(--bubble); border-radius: 4px var(--r) var(--r) var(--r); padding: 10px 14px; box-shadow: var(--shadow); min-width: 0; overflow-wrap: anywhere; }
+.bubble time { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.bubble.ask { background: var(--wait-soft); }
+.bubble .tag { display: inline-block; font-size: 11px; font-weight: 700; color: var(--wait); margin-bottom: 2px; }
+.bubble a { color: inherit; }
+.bubble ul { margin: 4px 0 0; padding-left: 1.2em; }
+
+.foot { padding: 12px 24px 16px; color: var(--muted); font-size: 12.5px; text-align: center; border-top: 1px solid var(--line); background: var(--panel); }
+
+/* ---------- info sheet ---------- */
+.sheet { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--panel); box-shadow: -8px 0 32px rgba(0,0,0,.12);
+  transform: translateX(105%); transition: transform .2s ease; display: flex; flex-direction: column; z-index: 5; }
+.sheet.open { transform: none; }
+.sheet-top { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 24px 16px; position: relative; text-align: center; }
+.sheet-top h2 { margin: 6px 0 0; font-size: 18px; }
+.close { position: absolute; top: 12px; right: 12px; border: 0; background: var(--select); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+.sheet-body { overflow-y: auto; padding: 0 24px 24px; display: flex; flex-direction: column; gap: 20px; }
+.sec h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); letter-spacing: .06em; }
+.sec p { margin: 0; }
+.sec ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sec li { background: var(--bg); border-radius: 12px; padding: 8px 12px; }
+.sec li small { display: block; color: var(--muted); font-size: 11.5px; }
+.nots { margin-top: 8px; color: var(--muted); }
+.nots b { color: var(--ink); }
+.chip { display: inline-block; font-family: var(--mono); font-size: 12px; background: var(--select); border-radius: 8px; padding: 2px 8px; margin: 0 4px 4px 0; }
+.shared { color: var(--muted); font-size: 11.5px; }
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.2); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 4; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+
+/* working dots */
+.typing { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 4px; }
+.typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--work); animation: hop 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes hop { 0%, 60%, 100% { transform: none; opacity: .5 } 30% { transform: translateY(-3px); opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; } .sheet, .scrim { transition: none; } }
+
+@media (max-width: 720px) {
+  .desk { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .bots { flex-direction: row; overflow-x: auto; }
+  .bot-row { grid-template-columns: 44px auto; }
+  .bot-row .say, .side-foot { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="desk">
+  <aside class="side">
+    <div class="brand">kantoku desk <small>読むだけ</small></div>
+    <ul class="bots" id="bots"></ul>
+    <div class="side-foot">このPCの中だけで開いています</div>
+  </aside>
+
+  <main class="main">
+    <header class="head">
+      <button class="head-name" id="headName" aria-haspopup="dialog"></button>
+      <span class="state" id="headState"></span>
+    </header>
+    <section class="chat" id="chat" aria-live="polite"></section>
+    <div class="foot">返事はいつもどおり、この子のチャットで伝えてね。</div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetName">
+  <div class="sheet-top">
+    <button class="close" id="close" aria-label="閉じる">✕</button>
+    <span id="sheetFace"></span>
+    <h2 id="sheetName"></h2>
+    <span class="state" id="sheetState"></span>
+  </div>
+  <div class="sheet-body">
+    <div class="sec"><h3>説明</h3><p id="desc"></p><p class="nots" id="nots"></p></div>
+    <div class="sec"><h3>覚えていること</h3><ul id="memory"></ul></div>
+    <div class="sec"><h3>ルーティン</h3><ul id="routines"></ul></div>
+    <div class="sec"><h3>スキル <span class="shared">みんなで共有</span></h3><div id="skills"></div></div>
+  </div>
+</aside>
+
+<script>
+// Dummy data. In the real desk this comes from ~/.kantoku/<name>/ (read only).
+const BOTS = [
+  {
+    name: "Mochi", color: "#f7a8b8", mood: "smile", status: "wait", say: "PR を出す前に見てほしいな",
+    desc: "Web アプリの issue を進めて、PR を出すところまで面倒を見ます。検証役が合格を出してから merge します。",
+    nots: "本番への反映と、新しい issue を立てること。",
+    memory: [
+      ["main に merge すると自動で本番に出る", "11/12"],
+      ["E2E テストは夜だけ回す決まり", "11/15"],
+      ["ログイン画面の文言はデザイナーさんが決める", "11/17"],
+    ],
+    routines: [["朝の見回り", "平日 8:44", "止まっている子がいないか見る。何も無ければ黙る"]],
+    reports: [
+      ["11/18", "21:02", "info", "検索の並び替え(#128)ができました。検証役も合格です。<br>PR: <a href='#'>#131</a>"],
+      ["11/18", "21:40", "ask", "PR を出す前に手元で試してほしいです。試し方はチャットに書きました。"],
+    ],
+  },
+  {
+    name: "Pico", color: "#f5d06b", mood: "focus", status: "work", say: "テストを直しているところ",
+    desc: "kantoku そのものを良くする係です。使っていて困ったことを集めて、手順書とひな形を直します。",
+    nots: "LICENSE の変更と、リリースのお知らせ。",
+    memory: [
+      ["push のたびに版の番号を上げる", "11/18"],
+      ["PR の前にユーザーが手元で試す", "11/18"],
+    ],
+    routines: [
+      ["困りごと探し", "平日 8:44", "最近のやり取りから、同じ直しのくり返しを探す"],
+      ["ルーティン点検", "月曜 8:49", "見回りの無駄が無いか見る"],
+    ],
+    reports: [
+      ["11/17", "18:20", "info", "パネルの出し入れができるようになりました(v0.3.1)。"],
+      ["11/18", "10:05", "info", "GUI の下調べが終わりました。案は3つ、おすすめは「デスク」です。"],
+      ["11/18", "22:30", "info", "通知の受け口を作り直しています。終わったら知らせます。"],
+    ],
+  },
+  {
+    name: "Sora", color: "#8ec5f0", mood: "sleep", status: "sleep", say: "おやすみ中",
+    desc: "共有ドライブの整理を手伝います。調べてまとめるまでが仕事です。",
+    nots: "ファイルの削除と、権限を変えること。",
+    memory: [["共有の設定はドライブごとに違う", "11/16"]],
+    routines: [],
+    reports: [
+      ["11/16", "16:40", "info", "共有ドライブの棚卸しが終わりました。気になる点が5つあります。"],
+    ],
+  },
+];
+const SKILLS = ["writing-plans", "unslop", "architect", "make-bot-ui"];
+const STATUS = { work: "作業中", wait: "あなた待ち", sleep: "おやすみ中" };
+
+// Faces: one round blob, eyes and mouth change with the mood.
+function face(bot, big) {
+  const eyes = bot.mood === "sleep"
+    ? '<path d="M14 21q3 2 6 0M28 21q3 2 6 0" stroke="#1f2a33" stroke-width="2" fill="none" stroke-linecap="round"/>'
+    : '<circle cx="17" cy="21" r="2.6" fill="#1f2a33"/><circle cx="31" cy="21" r="2.6" fill="#1f2a33"/>';
+  const mouth = bot.mood === "smile"
+    ? '<path d="M19 29q5 5 10 0" stroke="#1f2a33" stroke-width="2" fill="none" stroke-linecap="round"/>'
+    : bot.mood === "focus" ? '<path d="M21 30h6" stroke="#1f2a33" stroke-width="2" stroke-linecap="round"/>'
+    : '<circle cx="24" cy="30" r="1.8" fill="#1f2a33"/>';
+  const span = document.createElement("span");
+  span.className = "face" + (big ? " big" : "");
+  span.style.setProperty("--c", bot.color);
+  span.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="12" cy="27" rx="3" ry="2" fill="#fff" opacity=".5"/><ellipse cx="36" cy="27" rx="3" ry="2" fill="#fff" opacity=".5"/>'
+    + eyes + mouth + '</svg><span class="dot ' + bot.status + '"></span>';
+  return span;
+}
+
+// Text from files always goes in with textContent (escaped). The few links in
+// the dummy reports stand in for the markdown links the real desk renders safely.
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+let current = 0;
+function renderList() {
+  const ul = document.getElementById("bots"); ul.textContent = "";
+  BOTS.forEach((b, i) => {
+    const li = el("li"); const btn = el("button", "bot-row");
+    btn.setAttribute("aria-current", i === current ? "true" : "false");
+    btn.append(face(b));
+    const mid = el("div"); mid.append(el("div", "name", b.name + "くん"), el("div", "say", b.say)); btn.append(mid);
+    if (b.status === "wait") btn.append(el("span", "wait-pill", "あなた待ち")); else btn.append(el("span"));
+    btn.onclick = () => { current = i; renderAll(); };
+    li.append(btn); ul.append(li);
+  });
+}
+function stateLabel(b, target) {
+  target.textContent = STATUS[b.status];
+  if (b.status === "work") { const t = el("span", "typing"); t.innerHTML = "<i></i><i></i><i></i>"; target.append(t); }
+}
+function renderChat() {
+  const b = BOTS[current];
+  const hn = document.getElementById("headName"); hn.textContent = "";
+  hn.append(face(b), el("strong", null, b.name + "くん"), el("span", "chev", "▸ 情報"));
+  stateLabel(b, document.getElementById("headState"));
+  const chat = document.getElementById("chat"); chat.textContent = "";
+  let day = "";
+  b.reports.forEach(([d, t, kind, html]) => {
+    if (d !== day) { chat.append(el("div", "day", d)); day = d; }
+    const m = el("div", "msg"); m.append(face(b));
+    const bub = el("div", "bubble" + (kind === "ask" ? " ask" : ""));
+    if (kind === "ask") bub.append(el("span", "tag", "あなたに聞きたいこと"), document.createElement("br"));
+    const body = el("span"); body.innerHTML = html; bub.append(body, el("time", null, t));
+    m.append(bub); chat.append(m);
+  });
+  chat.scrollTop = chat.scrollHeight;
+}
+function renderSheet() {
+  const b = BOTS[current];
+  const f = document.getElementById("sheetFace"); f.textContent = ""; f.append(face(b, true));
+  document.getElementById("sheetName").textContent = b.name + "くん";
+  stateLabel(b, document.getElementById("sheetState"));
+  document.getElementById("desc").textContent = b.desc;
+  const n = document.getElementById("nots"); n.textContent = ""; n.append(el("b", null, "やらないこと: "), b.nots);
+  const mem = document.getElementById("memory"); mem.textContent = "";
+  b.memory.forEach(([fact, when]) => { const li = el("li", null, fact); li.append(el("small", null, when + " に覚えた")); mem.append(li); });
+  const r = document.getElementById("routines"); r.textContent = "";
+  if (!b.routines.length) r.append(el("li", null, "まだありません"));
+  b.routines.forEach(([name, when, what]) => { const li = el("li", null, name + " ・ " + when); li.append(el("small", null, what)); r.append(li); });
+  const s = document.getElementById("skills"); s.textContent = "";
+  SKILLS.forEach(k => s.append(el("span", "chip", k)));
+}
+function renderAll() { renderList(); renderChat(); renderSheet(); }
+
+const sheet = document.getElementById("sheet"), scrim = document.getElementById("scrim");
+function openSheet(on) { sheet.classList.toggle("open", on); scrim.classList.toggle("open", on); if (on) document.getElementById("close").focus(); }
+document.getElementById("headName").onclick = () => openSheet(true);
+document.getElementById("close").onclick = () => openSheet(false);
+scrim.onclick = () => openSheet(false);
+document.addEventListener("keydown", e => { if (e.key === "Escape") openSheet(false); });
+renderAll();
+</script>
+</body>
+</html>
