@@ -412,7 +412,7 @@ test('a letter that cannot be sent for a day is dropped with a DROPPED log line,
   for (let minute = 0; minute <= 60; minute += 15) assert.equal(await tick(ctx, at(minute)), 'continue', 'unsent letters keep it alive')
   for (let i = 0; i < 10; i++) await tick(ctx, at(24 * 60 + i * 6))
   const log = readFileSync(join(s.home, 'watch.log'), 'utf8')
-  assert.match(log, /DROPPED closed:me-login\/app#1:closed>child:ctx_1 /)
+  assert.match(log, /GIVING UP closed:me-login\/app#1:closed>child:ctx_1 /, 'the drop has started; DROPPED follows once the manager is told')
   assert.ok(ctx.outbox.keys().every(key => key.startsWith('dropped:')), ctx.outbox.keys().join(' '))
   assert.ok(ctx.outbox.keys().includes('dropped:closed:me-login/app#1:closed>child:ctx_1'))
 })

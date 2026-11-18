@@ -345,7 +345,7 @@ async function catchupOnce(paths: Paths, deps: CliDeps, from: string | undefined
     const now = new Date()
     const ctx = await createContext({ run: deps.run, relay: NO_RELAY, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(), port: 0, now, from })
     await catchUpOnce(ctx, now)
-    const unsent = ctx.outbox.keys().length
+    const unsent = ctx.outbox.unsent()
     deps.out(`kantoku-watch: catch-up done. See ${join(paths.home, 'watch.log')} for the letters sent`)
     if (unsent > 0) deps.out(`unsent letters: ${unsent} (kept in outbox.json; the next start or catchup tries them again)`)
   } finally {

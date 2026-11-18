@@ -5,14 +5,18 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createContext, handleDelivery, tick } from './daemon.ts'
 import type { DaemonContext } from './daemon.ts'
 import type { Trouble, WatchEvent } from './events.ts'
 import type { Relay } from './relay.ts'
+import { openOutbox } from './outbox.ts'
 import { lettersFor } from './route.ts'
+import type { Letter } from './route.ts'
+import { openSeen } from './seen.ts'
+import type { Seen } from './seen.ts'
 import { parseTargets } from './targets.ts'
 import type { Run } from './run.ts'
 
@@ -203,6 +207,7 @@ async function simulate(seed: number): Promise<string[]> {
       const ok = n === 1 || (sameText && n > 1) || (n === 0 && dropped(letter.key))
       if (!ok) problems.push(`seed ${seed}: ${letter.key} sent ${n} times`)
     }
+  rmSync(root, { recursive: true, force: true })
   for (const s of new Set(sent)) if (count(s) > 1 && !/^run:[^\n]*\nkantoku-watch: \S+ \([^)]*\) CI (passed|failed)/.test(s)) problems.push(`seed ${seed}: sent ${count(s)} times: ${s.split('\n').slice(0, 2).join(' | ')}`)
 
   return problems
@@ -211,6 +216,96 @@ async function simulate(seed: number): Promise<string[]> {
 test(`fault injection: ${SEEDS} seeds, every letter that GitHub's facts call for is sent exactly once`, async () => {
   const problems: string[] = []
   for (let seed = 1; seed <= SEEDS; seed++) problems.push(...(await simulate(seed)))
+  const failedSeeds = new Set(problems.map(p => p.split(':')[0]))
+  assert.deepEqual(problems.slice(0, 15), [], `${failedSeeds.size} of ${SEEDS} seeds failed`)
+})
+
+// Fault injection for the outbox itself: letters that fail long enough to be dropped,
+// mixed with crashes (a send that dies before it acts, a process that dies right after
+// seen.json is written and before outbox.json is) and log writes that fail. When the
+// failures stop, each letter is either sent exactly once, or has its DROPPED log line
+// and (for a child's letter) a line to its manager, sent or itself DROPPED.
+async function dropSimulate(seed: number): Promise<string[]> {
+  const r = rng(seed)
+  const home = mkdtempSync(join(tmpdir(), 'kw-drop-'))
+  const letters: Letter[] = [1, 2, 3, 4, 5, 6].map(n =>
+    n % 3 === 0
+      ? { to: 'run:run_1', subject: `line ${n}`, body: '', key: `closed:o/r#${n}:merged>run:run_1` }
+      : { to: `dispatch:ctx_${n}`, subject: `letter ${n}`, body: 'b', key: `comment:o/r#${n}:${n}>child:ctx_${n}`, manager: 'run:run_1' },
+  )
+  const sends: string[] = []
+  const logs: string[] = []
+  let pSend = r.pick([0.6, 0.8, 0.95])
+  let pLog = r.pick([0, 0.2, 0.5])
+  let pCrash = r.pick([0, 0.1, 0.3])
+  let t = 0
+  const at = () => new Date(Date.parse('2026-11-18T00:00:00Z') + t)
+
+  const open = async () => {
+    const real = await openSeen(join(home, 'seen.json'))
+    const seen: Seen = { ...real, save: async () => {
+      await real.save()
+      if (r.next() < pCrash) throw new Error('crash after seen.json, before outbox.json')
+    } }
+
+    return openOutbox(join(home, 'outbox.json'), seen)
+  }
+  const send = async (letter: Letter) => {
+    if (r.next() < pCrash) throw new Error('crash before the send')
+    if (r.next() < pSend) return false
+    sends.push(letter.key)
+
+    return true
+  }
+  const log = async (line: string) => {
+    if (r.next() < pLog) return r.next() < 0.5 ? false : Promise.reject(new Error('EIO'))
+    logs.push(line)
+
+    return true
+  }
+
+  let outbox = await open()
+  await outbox.put(letters, at())
+  for (let step = 0; step < 60; step++) {
+    t += (1 + Math.floor(r.next() * 4)) * 60 * 60_000
+    try {
+      if (r.next() < 0.2) await outbox.put(letters, at()) // a catch-up finds the same facts again
+      await outbox.flush(send, at(), log)
+    } catch {
+      outbox = await open() // the process died; a new one starts from the files
+    }
+  }
+  pSend = 0
+  pLog = 0
+  pCrash = 0
+  outbox = await open()
+  for (let i = 0; i < 20; i++) {
+    t += 10 * 60_000
+    await outbox.flush(send, at(), log)
+  }
+
+  const problems: string[] = []
+  const count = (key: string) => sends.filter(k => k === key).length
+  const droppedLines = (key: string) => logs.filter(line => line.startsWith(`DROPPED ${key} `)).length
+  const droppedLine = (key: string) => droppedLines(key) > 0
+  for (const letter of letters) {
+    const sent = count(letter.key)
+    const dropped = droppedLine(letter.key)
+    const notice = `dropped:${letter.key}`
+    // No crash is injected after a successful send, so nothing may go out twice, and each DROPPED line is written once.
+    const told = letter.manager === undefined || (count(notice) === 1 && !droppedLine(notice)) || (count(notice) === 0 && droppedLines(notice) === 1)
+    const ok = (sent === 1 && !dropped && count(notice) === 0) || (sent === 0 && droppedLines(letter.key) === 1 && told)
+    if (!ok) problems.push(`seed ${seed}: ${letter.key} sent ${sent}, DROPPED line ${dropped}, notice sent ${count(notice)}`)
+  }
+  if (outbox.keys().length > 0) problems.push(`seed ${seed}: outbox not empty: ${outbox.keys().join(' ')}`)
+  rmSync(home, { recursive: true, force: true })
+
+  return problems
+}
+
+test(`fault injection: ${SEEDS} seeds of drops with crashes and failed log writes; no letter vanishes without its DROPPED line and its manager's line`, async () => {
+  const problems: string[] = []
+  for (let seed = 1; seed <= SEEDS; seed++) problems.push(...(await dropSimulate(seed)))
   const failedSeeds = new Set(problems.map(p => p.split(':')[0]))
   assert.deepEqual(problems.slice(0, 15), [], `${failedSeeds.size} of ${SEEDS} seeds failed`)
 })

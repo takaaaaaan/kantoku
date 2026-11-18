@@ -245,7 +245,7 @@ The child letter and the manager line for the same fact get keys with `>child:<c
 - A new push gives a new head SHA, so its CI result is a new fact.
 - A rerun on the same SHA that turns red into green changes the key, so it is sent. A rerun that ends the same way is not.
 - Catch-up builds the same keys, so a webhook and catch-up that see the same review send it once.
-- A key is written to `seen.json` only after `orca orchestration send` exits 0. A crash between send and write can repeat one letter; that is accepted.
+- A key is written to `seen.json` only after `orca orchestration send` exits 0, and `seen.json` is saved right then, before the next letter is tried. A crash between the send and that write can repeat one letter; that is accepted.
 - `seen.json` drops keys of PRs that have not been watched for 14 days.
 
 ## The outbox
@@ -254,7 +254,10 @@ Three earlier versions kept "letters not sent yet" as a side effect of other sta
 
 ```ts
 // outbox.json — letters decided but not sent yet
-type Entry = { letter: Letter; createdAt: string; attempts: number; lastTriedAt?: string }
+type Entry = { letter: Letter; createdAt: string; attempts: number; lastTriedAt?: string; drop?: Drop }
+// A drop in progress, kept as an entry `dropped:<key>` whose letter is the line to the manager.
+// told: the manager's line was sent, or gave up itself; then only the DROPPED log line is left.
+type Drop = { key: string; to: string; subject: string; tries: number; since: string; notify: boolean; told?: 'sent' | 'gave-up' }
 type OutboxFile = { [letterKey: string]: Entry }
 
 // prs.json — what kantoku-watch knows about a PR; nothing about letters
@@ -265,11 +268,11 @@ type PrRecord = { firstSeenAt?: string; closedAt?: string; finalReadAt?: string 
 Rules:
 
 1. Every letter is written to `outbox.json` (temp file + rename) the moment it is decided, before the first try. A webhook delivery is marked handled in `seen.json` only after its letters are in the outbox.
-2. A letter leaves the outbox in one place only, `settle` in `outbox.ts`, for one of these reasons: the send exited 0; its key is already in `seen.json` (an earlier send succeeded); or it is dropped (rule 5). A close, a catch-up, a failed `gh` read, and a restart never touch the outbox.
+2. A letter leaves the outbox in one place only, `settle` in `outbox.ts`, for one of these reasons: the send exited 0; its key is already in `seen.json` (an earlier send succeeded); or it is a drop entry whose work is done (rule 6). A close, a catch-up, a failed `gh` read, and a restart never touch the outbox.
 3. A close changes `prs.json` only. A closed PR's letters still in the outbox are sent like any other. After a close, catch-up reads the PR once more; the first successful read sets `finalReadAt`, so a comment or review whose webhook was lost before the close still becomes a letter. A close webhook is recorded at once, even for a PR not read yet: then the record has `closedAt` and no `firstSeenAt`, so its first catch-up is still the full first-seen read. A read that still says OPEN (GitHub's view can lag behind the webhook) does not undo the close; a reopened PR is not followed again.
 4. The duplicate check that decides a send happens in one place, just before it: a key already in `seen.json` is settled without sending (and logged). `put` also skips keys in `seen.json`, so catch-ups do not churn the file, and a letter already waiting keeps its entry and its attempt count. A quiet first-seen catch-up (rows all done) never marks a letter that is already waiting.
 5. A failed letter waits before its next try: 30 seconds, then twice as long each time, at most 5 minutes. So an Orca outage does not hold up every tick and delivery.
-6. A letter that has failed for 24 hours and at least 10 tries is dropped: `watch.log` gets `DROPPED <key> to <to> after <n> tries since <createdAt>: <subject>`, the key goes to `seen.json` so the same fact is not put back by a later catch-up, and the child's manager (`run:`) gets one line saying a letter was given up, through the outbox like any letter. No notice is made for a dropped notice, nor for a letter that was itself addressed to the manager (it would go to the place that just failed); then the log says there is no one else to tell.
+6. A letter that has failed for 24 hours and at least 10 tries is dropped, and the drop is itself an outbox entry, so it is finished by the same rule as a letter: it leaves only when its work is done. One write of `outbox.json` replaces the letter with an entry `dropped:<key>` that holds the line for the child's manager (`run:`) and the facts for the log; `watch.log` gets a `GIVING UP` hint. Then (a) the manager's line is sent like any letter, with the same waits and its own 24-hour limit; (b) once it is sent, or has given up too, the `DROPPED <key> to <to> after <n> tries since <createdAt>: <subject>; <the manager was told | the line to run:… failed for a day too | no manager to tell>` line is written; (c) only after that line is written do both keys go to `seen.json` (so a later catch-up does not put the fact back) and the entry is settled. A crash or a failed log write at any step leaves the entry, and the next round goes on from where it stopped, and the DROPPED line is not lost. Each DROPPED line is written once (the entry counts the lines already written). As for any letter, a crash between a successful send of the manager's line and the next save can send that line once more. A drop that waits only for its log line (watch.log cannot be written) does not count as unsent: it does not keep the daemon from idle-stopping, and the next start finishes it. No line goes to the manager for a letter that was itself addressed to the manager.
 7. The daemon flushes the outbox at the end of every tick, after every delivery, and in `catchup`. While the outbox is not empty the daemon does not idle-stop, and `status` prints `unsent letters: <n>`. `catchup` takes the daemon's lock and touches it every 15 seconds like the daemon, so the two never share `outbox.json`; with a daemon running it exits 1. An `outbox.json` that exists but cannot be read stops the start (logged), because starting empty would overwrite it; one that is not an outbox is copied to `outbox.json.broken-<time>` first.
 8. A letter in the outbox is sent even if its row is later marked done or removed: the fact happened while the row was active.
 
@@ -439,7 +442,7 @@ Unit tests, `node --test "watch/**/*.spec.ts"`:
 - `receiver.ts`: good signature accepted, bad or missing signature rejected, `/shutdown` needs the secret.
 - `relays/gh-forward.ts`: with a fake runner, `sync` starts and stops the right processes; restart backoff; give-up after three.
 - `outbox.ts`: on disk before the first try, kept across a reopen, settled only on success or a drop, the drop line and the manager notice, no notice for a dropped notice.
-- `faults.spec.ts` (fault injection): 300 seeds. Each seed mixes random events (comment, review, CI, close or merge, restart, reconnect, tick, lost and redelivered webhooks) with random failures (`orca` send, `gh` reads). When the failures stop, every letter that GitHub's facts call for must have been sent exactly once, unless `watch.log` has its `DROPPED` line. `KW_FAULT_SEEDS` changes the number of seeds.
+- `faults.spec.ts` (fault injection), two tests of 300 seeds each. The second drives the outbox alone through drops: letters fail for days, the process dies before a send or right after `seen.json` is written, and log writes fail or throw; at the end each letter is sent exactly once, or has its DROPPED line and its manager's line (sent or itself DROPPED). The first: 300 seeds. Each seed mixes random events (comment, review, CI, close or merge, restart, reconnect, tick, lost and redelivered webhooks) with random failures (`orca` send, `gh` reads). When the failures stop, every letter that GitHub's facts call for must have been sent exactly once, unless `watch.log` has its `DROPPED` line. `KW_FAULT_SEEDS` changes the number of seeds.
 
 Manual checks (in the plan, on a personal test repo, never an org repo): the end-to-end letter for each event, stop leaving no webhook behind, the daemon outliving the child that started it, and the org-repo refusal.
 

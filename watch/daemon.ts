@@ -211,7 +211,7 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
     // Only PRs it can follow keep it alive: a repo waiting for approval or without admin rights never reports a close.
     // Letters still in the outbox keep it alive too, until they are sent or dropped.
     const stillOpen = openPrs(ctx).some(pr => ctx.repos[pr.repo] === 'forwarding' || ctx.repos[pr.repo] === 'polling')
-    if (stillOpen || ctx.outbox.keys().length > 0) ctx.lastOpenAt = now
+    if (stillOpen || ctx.outbox.unsent() > 0) ctx.lastOpenAt = now
     const watched = new Set(ctx.targets.map(t => prKey(t.pr)))
     ctx.seen.prune(watched, now)
     for (const [key, record] of Object.entries(ctx.prs))
@@ -442,7 +442,7 @@ export function statusOf(ctx: DaemonContext, now: Date): Status {
     lastAliveAt: now.toISOString(),
     repos: ctx.repos,
     troubles: ctx.troubles,
-    unsent: ctx.outbox.keys().length,
+    unsent: ctx.outbox.unsent(),
   }
 }
 
@@ -476,12 +476,18 @@ export async function readPrs(path: string): Promise<Record<string, PrRecord>> {
   }
 }
 
-export async function log(ctx: Pick<DaemonContext, 'home'>, line: string) {
+// False when the line could not be written. Most callers ignore that; the outbox
+// does not finish a drop until its DROPPED line is written.
+export async function log(ctx: Pick<DaemonContext, 'home'>, line: string): Promise<boolean> {
   const path = join(ctx.home, 'watch.log')
   try {
     if ((await stat(path)).size > LOG_MAX) await rename(path, `${path}.1`)
   } catch {}
   try {
     await appendFile(path, `${new Date().toISOString()} ${line}\n`)
-  } catch {}
+
+    return true
+  } catch {
+    return false
+  }
 }
