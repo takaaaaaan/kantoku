@@ -22,7 +22,7 @@
 - Timings: loop 15 s; idle stop after 10 min with no open watched PR; forwarder restarts after 5 s, 30 s, 2 min, then give up; polling fallback every 10 min; `seen.json` prune after 14 days; log rotation at 1 MB.
 - Receiver binds `127.0.0.1` only, port 0 (free port).
 - Public repo: fixtures are hand-written with placeholder names (`owner/repo`, `reviewer-login`). No real logins, org names, or local paths anywhere.
-- All test runs: `node --test watch/` from the repo root, exit code 0.
+- All test runs: `node --test "watch/**/*.test.ts"` from the repo root, exit code 0. (`node --test watch/` does not take a folder on Node 22: "Cannot find module".)
 
 ## Review Focus
 
@@ -110,7 +110,7 @@ Run on this repo itself (owned by the `gh` user) with a throwaway draft PR `[spi
   - `readAllTargets` on a temp dir with two managers and one unreadable entry returns targets from both.
 - [ ] **Step 2: Run** `node --test watch/targets.test.ts` → FAIL (module not found).
 - [ ] **Step 3: Implement `watch/targets.ts`** and edit the template header to `| Task | Child worktree | dispatch ID | PR | Status | Pending gate |` with the comment from spec item 2. Section and header detection follow `hooks/parse.ts` (headings `タスク|tasks?`, header row above the `|---|` rule, columns found by header name: `PR`, `dispatch`, `状態|状況|ステータス|status|state`, first column is the task).
-- [ ] **Step 4: Run** `node --test watch/` → PASS.
+- [ ] **Step 4: Run** `node --test "watch/**/*.test.ts"` → PASS.
 - [ ] **Step 5: Commit** `feat(watch): read PR owners from state.md`.
 
 **Evidence:** test output with pass count, and `git diff main -- skills/kantoku/templates/state.md` showing only the header and comment change.
@@ -133,7 +133,7 @@ Run on this repo itself (owned by the `gh` user) with a throwaway draft PR `[spi
 - [ ] **Step 2: Write the failing tests.** One test per fixture with the expected `WatchEvent`. Must include: repo from `repository.full_name` lowercased; `comment-on-issue`, `comment-by-bot`, `pr-opened`, `check-suite-requested` → `undefined`; `check_suite` completed → `{ kind: 'ci-trigger', repo, headSha: check_suite.head_sha }`; `status` → `ci-trigger` with `sha`; a review from a bot is kept. `summarizeChecks`: all pass → `passed`; `[pass, fail(lint), fail(build)]` → `{ state: 'failed', failed: ['build', 'lint'], passed: 1, skipped: 0 }`; any `pending` → `pending`; `skipping` and `cancel` count as `skipped` and are not failures; `[]` → `pending` (no checks yet means nothing to report).
 - [ ] **Step 3: Run** → FAIL.
 - [ ] **Step 4: Implement.** Readers are lenient: wrong shapes return `undefined`, never throw.
-- [ ] **Step 5: Run** `node --test watch/` → PASS. **Commit** `feat(watch): parse webhook payloads and CI checks`.
+- [ ] **Step 5: Run** `node --test "watch/**/*.test.ts"` → PASS. **Commit** `feat(watch): parse webhook payloads and CI checks`.
 
 **Evidence:** pass count; list of fixture files; `rg -n "github.com/[^o]" watch/fixtures` returns nothing (no real names).
 
@@ -161,7 +161,7 @@ Run on this repo itself (owned by the `gh` user) with a throwaway draft PR `[spi
   - a 2,000-character body is cut to 500 characters plus `…`.
   - target with `run: undefined` → no manager line.
 - [ ] **Step 2: Write the failing tests** for `seen`: add/has; save and reopen keeps keys; corrupt JSON opens empty; `prune` drops keys of PRs not in the active set that are older than 14 days and keeps the rest; delivery ID keys (`delivery:<id>`) are pruned after 14 days regardless.
-- [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `node --test watch/` → PASS. **Commit** `feat(watch): route events to children and drop duplicates`.
+- [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `node --test "watch/**/*.test.ts"` → PASS. **Commit** `feat(watch): route events to children and drop duplicates`.
 
 **Evidence:** pass count; the letter-text tests quoted in the report for the CI-failed and changes-requested cases.
 
@@ -186,7 +186,7 @@ Run on this repo itself (owned by the `gh` user) with a throwaway draft PR `[spi
   - `ciEvent` returns `undefined` when any check is pending, a `ci` event with the head SHA otherwise.
   - `catchUp` known PR: only reviews/comments after `since`; first-seen PR: latest approved/changes-requested review per reviewer, no comments; closed PR yields `closed` with `merged` from `mergedAt`.
   - the same review produced by `parseWebhook` (Task 3 fixture) and by `catchUp` has the same `factKey`.
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `node --test watch/` → PASS. **Commit** `feat(watch): send letters and catch up with gh`.
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `node --test "watch/**/*.test.ts"` → PASS. **Commit** `feat(watch): send letters and catch up with gh`.
 
 **Evidence:** pass count; the recorded `orca` argument list from one test pasted in the report.
 
@@ -207,7 +207,7 @@ Run on this repo itself (owned by the `gh` user) with a throwaway draft PR `[spi
 
 - [ ] **Step 1: Write the failing receiver tests** (real server on port 0, `fetch` to it): good signature → 202 and `onDelivery` called with header values; wrong signature → 401 and no call; missing → 401; `/shutdown` without the secret header → 401, with it → 202 and `onShutdown` called; the server is reachable on `127.0.0.1` (assert the bound address).
 - [ ] **Step 2: Write the failing relay tests** with a fake `Spawn`: `sync(['a/b','c/d'])` spawns two `gh webhook forward` with the exact events string from Global Constraints, `--repo`, `--url`, `--secret`; `sync(['c/d'])` kills `a/b`; a forwarder exit triggers a respawn, and after three failed respawns `onTrouble(repo, 'forwarder-gave-up', stderr)`; stderr `error creating webhook: HTTP 404` → `no-admin` with no respawn (message says "no admin rights or no such repo"); stderr `Hook already exists on this repository` → treated as already forwarded, `onTrouble(repo, 'forwarder-exited', …)` once, no respawn loop; `preflight` maps `gh auth status` / `gh extension list` outputs to `gh-not-logged-in`, `extension-missing`, `scope-missing` (`scope-missing` only when neither `repo` nor `admin:repo_hook` is in the scopes); `stop()` kills all. `onConnected` fires when the forwarder's stderr contains `Forwarding Webhook events from GitHub`.
-- [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `node --test watch/` → PASS. **Commit** `feat(watch): local receiver and gh webhook forward relay`.
+- [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** **Step 5: Run** `node --test "watch/**/*.test.ts"` → PASS. **Commit** `feat(watch): local receiver and gh webhook forward relay`.
 
 **Evidence:** pass count; the Task 1 strings used for `no-admin` and "connected", quoted.
 
@@ -231,7 +231,7 @@ Run on this repo itself (owned by the `gh` user) with a throwaway draft PR `[spi
 - [ ] **Step 1: Write the failing daemon tests:** first-seen PR triggers catch-up once; an org repo without `--allow` is `needs-approval`, not passed to `relay.sync`, and the manager gets one `needs-approval` line; with `--allow` it is synced; a repeated delivery ID sends nothing; a `ci-trigger` with all checks done sends one CI letter and a second identical trigger sends none; relay `onConnected` runs catch-up for that repo; `forwarder-gave-up` moves the repo to `polling`; 10 min with no open PR → `idle-stop`, and a closed PR counts as not open.
 - [ ] **Step 2: Write the failing CLI tests:** Review Focus 5 — `start` with a live `status.json` pid reports "already running" and exits 0 without spawning; with a dead pid it spawns; `status` with no file prints "not running" and exits 0; `stop` posts `/shutdown` with the secret from `secret`; preflight trouble → exit 2 and the fix text from the spec's failure table; `secret` is created on first start with 32 random bytes hex.
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement.** `run` wires `realRun`, `ghForwardRelay`, `startReceiver`, writes `status.json`, loops `tick` every 15 s, and on shutdown or idle-stop calls `relay.stop()`, closes the receiver, and removes the pid from `status.json`.
-- [ ] **Step 5: Run** `node --test watch/` → PASS. **Commit** `feat(watch): daemon loop and start/stop/status commands`.
+- [ ] **Step 5: Run** `node --test "watch/**/*.test.ts"` → PASS. **Commit** `feat(watch): daemon loop and start/stop/status commands`.
 
 **Evidence:** pass count; output of `node watch/cli.ts status` on a machine where it never ran ("not running", exit 0).
 
