@@ -8,10 +8,18 @@ import type { ManagerView, TaskItem } from './parse'
 // only in a session whose $ORCA_TERMINAL_HANDLE a manager wrote to the
 // `terminal:` line of ~/.kantoku/<name>/state.md, and it reads those files
 // again every few seconds, so it follows the manager as it works.
+//
+// The `showPanelOnStart` option (a row in /config) says whether a manager
+// session starts with the panel up; `/kantoku-panel show|hide|toggle` and
+// closing the pane change that for the session, through reloads too.
 
 const PANE = 'kantoku-manager'
 const COMMAND = 'kantoku-panel'
 const POLL_MS = 5000
+const USAGE = 'Usage: /kantoku-panel [show|hide|toggle]. With no argument it toggles.'
+
+// The person's choice for this session; unset until they make one.
+const wanted = { plugin: 'kantoku', key: 'isPanelWanted' } as const
 
 async function kantokuRoot($: EngineInterface): Promise<string | undefined> {
   const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
@@ -73,20 +81,30 @@ let seen = ''
 let last: ManagerView | undefined
 let hasOpened = false
 
-async function poll($: EngineInterface) {
+const paneOf = async ($: EngineInterface) => (await $.ui.panes()).find(pane => pane.id === PANE)
+
+async function poll($: EngineInterface, showOnStart: boolean) {
   const view = await loadView($)
   const now = view === undefined ? '' : JSON.stringify(view)
   if (now === seen) return
   last = view
-  const isUp = (await $.ui.panes()).some(pane => pane.id === PANE)
+  const isUp = (await paneOf($)) !== undefined
 
   if (view === undefined) {
     if (isUp) await $.ui.close({ id: PANE })
     hasOpened = false
-  } else if (!hasOpened || isUp) {
-    // Open once when this session becomes a manager; after that only
-    // retitle, so a panel the person closed stays closed until /kantoku-panel.
+  } else if (isUp) {
+    // Up already: only retitle.
     await $.ui.open({ id: PANE, title: titleOf(view) })
+  } else if (!hasOpened) {
+    // Opened once per load when this session is a manager, if the person's
+    // choice (or else the option) wants it; a pane they close stays closed.
+    const { value = showOnStart } = await $.state.get(wanted)
+    if (value) {
+      await $.ui.open({ id: PANE, title: titleOf(view) })
+      // A hide that came while this open was on its way wins.
+      if ((await $.state.get(wanted)).value === false) await $.ui.close({ id: PANE })
+    }
     hasOpened = true
   }
   // Marked seen only once the pane is settled, so a refused open is tried again.
@@ -94,29 +112,59 @@ async function poll($: EngineInterface) {
   $.ui.invalidate('ui.render')
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const showOnStart = options.showPanelOnStart !== false
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: "Show this kantoku manager's profile and tasks beside the chat",
+      description: "Show or hide this kantoku manager's profile and tasks beside the chat",
+      argumentHint: '[show|hide|toggle]',
     })
-    $.clock.every(POLL_MS, () => void poll($).catch(() => undefined))
-    await poll($).catch(() => undefined)
+    $.clock.every(POLL_MS, () => void poll($, showOnStart).catch(() => undefined))
+    await poll($, showOnStart).catch(() => undefined)
 
     return next(e)
   })
 
-  on('command.run', { command: COMMAND }, async $ => {
+  on('command.run', { command: COMMAND }, async ($, e) => {
+    const verb = e.args.trim().toLowerCase() || 'toggle'
+    if (verb !== 'show' && verb !== 'hide' && verb !== 'toggle') return { text: USAGE }
+
     const view = await loadView($)
     if (view === undefined) {
       return {
         text: 'This session is not a kantoku manager: no ~/.kantoku/<name>/state.md names its Orca terminal.',
       }
     }
-    await $.ui.open({ id: PANE, title: titleOf(view) })
+
+    // Listed is not seen: a pane can wait undrawn on a narrow terminal or
+    // sit as a tab behind another, and toggling that one shows it.
+    const pane = verb === 'show' ? undefined : await paneOf($)
+    const isShow = verb === 'show' || (verb === 'toggle' && !(pane?.isPlaced === true && pane.isShown))
+    if (!isShow) {
+      await $.state.set(wanted, false)
+      if (pane !== undefined) await $.ui.close({ id: PANE })
+
+      return { text: 'Hid the kantoku panel. /kantoku-panel show brings it back.' }
+    }
+
+    await $.state.set(wanted, true)
+    try {
+      await $.ui.open({ id: PANE, title: titleOf(view) })
+    } catch (error) {
+      return { text: `Could not open the panel: ${error instanceof Error ? error.message : String(error)}` }
+    }
     hasOpened = true
 
     return { text: `Opened the panel for ${titleOf(view)}.` }
+  })
+
+  // Closing the pane by hand counts as hiding it, so a reload keeps it closed.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    if (e.origin.kind === 'person') await $.state.set(wanted, false).catch(() => undefined)
+
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
