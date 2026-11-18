@@ -22,10 +22,11 @@ The kantoku desk is one local page that shows all managers the way Grok Bot show
 - It ships in the **public kantoku repo**.
 - Phone access (Tailscale) comes later.
 - The user tries it locally before any PR.
+- After seeing the mockup (2026-11-19): names have no `くん`. The rest of the mockup (round faces, one-line status, the waiting mark, bubbles, info sheet, labels in the profile's language) had no comments and stands as a provisional decision the user may still change.
 
 ## Goals
 
-- One page lists every manager under `~/.kantoku/` with a face, `<Name>くん`, a one-line status, and a "waiting for you" mark.
+- One page lists every manager under `~/.kantoku/` with a face, the name, a one-line status, and a "waiting for you" mark.
 - Selecting a manager shows the reports it sent to the user, oldest at the top, as chat bubbles.
 - Pressing the manager's name opens an info sheet: description and "won't do", memory, routines, skills.
 - It starts with one command and needs nothing else running.
@@ -68,24 +69,24 @@ See the mockup for the look. In words:
 
 ```
 ┌ kantoku desk ──────────┬───────────────────────────────────────┐
-│ (•‿•) Mochiくん  [待ち]│ (•‿•) Mochiくん ▸   あなた待ち          │
+│ (•‿•) Mochi    [待ち]  │ (•‿•) Mochi ▸   あなた待ち              │
 │      PRの前に見てほしい│                                        │
-│ (•_•) Picoくん         │        ── 11/18 ──                     │
+│ (•_•) Pico             │        ── 11/18 ──                     │
 │      テストを直している│ (•‿•) [検索の並び替えができました…]     │
-│ (-_-) Soraくん         │ (•‿•) [あなたに聞きたいこと: …]         │
+│ (-_-) Sora             │ (•‿•) [あなたに聞きたいこと: …]         │
 │      おやすみ中        │                                        │
-│                        │ 返事はいつもどおり、この子のチャットで │
+│                        │ 返事はいつもどおり、Mochi のチャットで │
 └────────────────────────┴───────────────────────────────────────┘
           name pressed → info sheet slides in from the right:
           description · won't do · memory · routines · skills
 ```
 
-- **Bot list (left).** One row per directory under `~/.kantoku/`. Face, `<Name>くん`, one-line status, and an orange `あなた待ち` pill when something waits on the user. Rows that wait on the user sort first, then working, then sleeping; ties by name.
+- **Bot list (left).** One row per directory under `~/.kantoku/`. Face, the name as it is (no honorific), one-line status, and an orange `あなた待ち` pill when something waits on the user. Rows that wait on the user sort first, then working, then sleeping; ties by name.
 - **Status words.** Three only: `作業中` (working), `あなた待ち` (waiting for you), `おやすみ中` (asleep). The one-line text under the name is the first line of the latest report; with no report it is the status word.
 - **Chat (right).** Only reports the manager addressed to the user. A report that asks something is an orange bubble titled `あなたに聞きたいこと`. Date separators between days. No input box; the footer says to answer in the manager's chat.
 - **Info sheet.** Opens when the name in the header is pressed; closes with ✕, the backdrop, or Esc. Sections: description (with "won't do" under it), memory (fact + date), routines (name, when, what), skills (chips, marked as shared by all).
-- **Cuteness.** Each bot has a round face in its own pastel color with simple eyes and mouth. The color comes from a hash of the name, so it is stable without any file. The expression follows the status: smile when waiting for you, a flat mouth while working (with three hopping dots), closed eyes when asleep. Names get `くん`. Copy is soft and short (`おやすみ中`, `返事はいつもどおり、この子のチャットで伝えてね`). Rounded system font (Hiragino Maru Gothic, BIZ UDPGothic, Yu Gothic UI fallback); no web fonts, nothing loaded from outside.
-- **Language.** Labels follow the manager's language when it can be told (the `Language` section of profile.md); Japanese and English label sets ship. `くん` stays in both (it is part of the character).
+- **Cuteness.** Each bot has a round face in its own pastel color with simple eyes and mouth. The color comes from a hash of the name, so it is stable without any file. The expression follows the status: smile when waiting for you, a flat mouth while working (with three hopping dots), closed eyes when asleep. Names are shown as they are, with no `くん` (the user tried it in the mockup and dropped it). Copy is soft and short (`おやすみ中`, `返事はいつもどおり、<name> のチャットで伝えてね`). Rounded system font (Hiragino Maru Gothic, BIZ UDPGothic, Yu Gothic UI fallback); no web fonts, nothing loaded from outside.
+- **Language.** Labels follow the manager's language when it can be told (the `Language` section of profile.md); Japanese and English label sets ship.
 - **Themes.** Light and dark from `prefers-color-scheme`.
 - **Refresh.** The page re-reads every 5 seconds, like the Manager panel.
 

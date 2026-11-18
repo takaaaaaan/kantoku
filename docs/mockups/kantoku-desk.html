@@ -141,7 +141,7 @@ button { font: inherit; color: inherit; }
       <span class="state" id="headState"></span>
     </header>
     <section class="chat" id="chat" aria-live="polite"></section>
-    <div class="foot">返事はいつもどおり、この子のチャットで伝えてね。</div>
+    <div class="foot">返事はいつもどおり、<span id="footName"></span> のチャットで伝えてね。</div>
   </main>
 </div>
 
@@ -239,7 +239,7 @@ function renderList() {
     const li = el("li"); const btn = el("button", "bot-row");
     btn.setAttribute("aria-current", i === current ? "true" : "false");
     btn.append(face(b));
-    const mid = el("div"); mid.append(el("div", "name", b.name + "くん"), el("div", "say", b.say)); btn.append(mid);
+    const mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say)); btn.append(mid);
     if (b.status === "wait") btn.append(el("span", "wait-pill", "あなた待ち")); else btn.append(el("span"));
     btn.onclick = () => { current = i; renderAll(); };
     li.append(btn); ul.append(li);
@@ -252,8 +252,9 @@ function stateLabel(b, target) {
 function renderChat() {
   const b = BOTS[current];
   const hn = document.getElementById("headName"); hn.textContent = "";
-  hn.append(face(b), el("strong", null, b.name + "くん"), el("span", "chev", "▸ 情報"));
+  hn.append(face(b), el("strong", null, b.name), el("span", "chev", "▸ 情報"));
   stateLabel(b, document.getElementById("headState"));
+  document.getElementById("footName").textContent = b.name;
   const chat = document.getElementById("chat"); chat.textContent = "";
   let day = "";
   b.reports.forEach(([d, t, kind, html]) => {
@@ -269,7 +270,7 @@ function renderChat() {
 function renderSheet() {
   const b = BOTS[current];
   const f = document.getElementById("sheetFace"); f.textContent = ""; f.append(face(b, true));
-  document.getElementById("sheetName").textContent = b.name + "くん";
+  document.getElementById("sheetName").textContent = b.name;
   stateLabel(b, document.getElementById("sheetState"));
   document.getElementById("desc").textContent = b.desc;
   const n = document.getElementById("nots"); n.textContent = ""; n.append(el("b", null, "やらないこと: "), b.nots);
