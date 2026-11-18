@@ -74,7 +74,7 @@ test('catchUp, closed PR yields closed with merged from the state', async () => 
   const merged = await catchUp(gh({ view: view({ state: 'MERGED', mergedAt: '2026-11-18T10:00:00Z', mergedBy: { login: 'merger-login' } }) }), pr, true, new Date())
   assert.deepEqual(merged.at(-1), { kind: 'closed', pr, merged: true, by: 'merger-login' })
   const closed = await catchUp(gh({ view: view({ state: 'CLOSED' }) }), pr, true, new Date())
-  assert.deepEqual(closed.at(-1), { kind: 'closed', pr, merged: false, by: 'someone' })
+  assert.deepEqual(closed.at(-1), { kind: 'closed', pr, merged: false, by: '' })
 })
 
 test('catchUp: gh failing returns what it could read, never throws', async () => {

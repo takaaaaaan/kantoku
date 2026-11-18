@@ -85,7 +85,7 @@ export async function catchUp(run: Run, pr: PrRef, known: boolean, since: Date |
 
   if (view.state === 'MERGED' || view.state === 'CLOSED') {
     const merged = view.state === 'MERGED'
-    events.push({ kind: 'closed', pr, merged, by: (merged && typeof view.mergedBy?.login === 'string' ? view.mergedBy.login : undefined) ?? 'someone' })
+    events.push({ kind: 'closed', pr, merged, by: (merged && typeof view.mergedBy?.login === 'string' ? view.mergedBy.login : undefined) ?? '' })
   }
 
   return events

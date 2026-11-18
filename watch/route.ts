@@ -130,10 +130,14 @@ function childLetter(event: PrEvent): { subject: string; body: string } | undefi
         subject: `${head} comment by ${event.author}`,
         body: letter(`${event.author} commented on the PR.`, [event.url || prUrl, view], quoted('Comment text', event.body)),
       }
-    case 'closed':
-      return event.merged
-        ? { subject: `${head} merged by ${event.by}`, body: letter(`${event.by} merged the PR.`, [prUrl]) }
-        : { subject: `${head} closed without merge by ${event.by}`, body: letter(`${event.by} closed the PR without merging.`, [prUrl]) }
+    case 'closed': {
+      const by = event.by === '' ? '' : ` by ${event.by}`
+      const what = event.merged
+        ? (event.by === '' ? 'The PR was merged.' : `${event.by} merged the PR.`)
+        : (event.by === '' ? 'The PR was closed without merging.' : `${event.by} closed the PR without merging.`)
+
+      return { subject: `${head} ${event.merged ? 'merged' : 'closed without merge'}${by}`, body: letter(what, [prUrl]) }
+    }
   }
 }
 

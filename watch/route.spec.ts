@@ -157,3 +157,9 @@ test('factKey', () => {
   assert.equal(factKey({ kind: 'closed', pr, merged: false, by: '' }), 'closed:owner/repo#12:closed')
   assert.equal(factKey({ kind: 'ci-trigger', repo: 'owner/repo', headSha: 'x' }), undefined)
 })
+
+test('closed with no known closer leaves out "by"', () => {
+  const [child] = lettersFor({ kind: 'closed', pr, merged: false, by: '' }, [target()])
+  assert.equal(child?.subject, 'kantoku-watch: owner/repo#12 closed without merge')
+  assert.match(child?.body ?? '', /^What happened: The PR was closed without merging\.$/m)
+})
