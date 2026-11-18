@@ -336,7 +336,14 @@ node watch/cli.ts catchup                          one catch-up pass, no forward
 node watch/cli.ts run                              the daemon itself, in the foreground (what start launches)
 ```
 
-`start` launches `run` as a detached process with `ORCA_TERMINAL_HANDLE` and the other `ORCA_*` variables removed from its environment. Plan task 1 showed that `orca orchestration send --to dispatch:…` and `--to run:…` both work from such a process. Removing the variables does not hide the sender: Orca still shows the pane that started the daemon as the sender. Letters are identified by the `kantoku-watch:` subject and the `[kantoku-watch]` first line, not by the sender. Child letters go to `dispatch:`.
+`start` launches `run` as a detached process with the `ORCA_*` variables removed from its environment, and passes the paths and its own terminal handle as arguments (`run --home … --state-root … --from <ORCA_TERMINAL_HANDLE>`). Child letters go to `dispatch:`.
+
+What the end-to-end check (plan task 9) changed here:
+
+- **Every send names a sender.** Orca refuses `orca orchestration send` when it cannot tell the sender (`no_active_sender_terminal`), so the plan task 1 result "no `ORCA_*` variable is needed" no longer holds. The daemon sends with `--from <the terminal that ran start>`. That works after the starting worker is released. Orca refuses it for a Run the starting worker does not belong to (`dispatch_run_mismatch`, another manager's Run); then the letter is sent again with `--from <that manager's terminal:>` from its state.md. Letters are identified by the `kantoku-watch:` subject and the `[kantoku-watch]` first line, not by the sender.
+- **On Windows the daemon must leave the terminal.** Orca ends every process of a worker's terminal when it releases the worker, even a `detached` one. So on Windows `start` creates the daemon through WMI (`Win32_Process.Create`, hidden window); it belongs to no terminal and keeps running. Such a process does not inherit the environment, which is why paths and the sender are arguments.
+- **GitHub's "Redeliver" does not reach the receiver through `gh webhook forward`**: the redelivery arrives with a signature that does not verify (401). Delivery-ID dedupe still matters for a stage 2 relay; it was checked by replaying a signed delivery to the receiver.
+- **A PR in a repo waiting for approval (or without admin rights) does not keep the daemon alive**: kantoku-watch cannot see it close.
 
 `KANTOKU_HOME` and `KANTOKU_WATCH_HOME` override `~/.kantoku` and `~/.kantoku-watch` (for testing without touching the real ones).
 

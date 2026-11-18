@@ -258,7 +258,7 @@ Manual, no code. Ask the coordinator before starting (it creates a temporary web
 - [ ] **Step 1:** Set up a test manager home in a temp `HOME` (do not touch the real `~/.kantoku`): one `state.md` with a real test child's dispatch ID, the manager's Run ID, and a PR URL on the personal test repo.
 - [ ] **Step 2:** Through a child, `node watch/cli.ts start`; confirm `status` shows the repo `forwarding`.
 - [ ] **Step 3:** On the test PR: push a commit with a failing CI job, a passing one, submit an approval, request changes (from a second account if available, else skip and say so), add a comment, then merge. Record each letter the child and the manager received (subject lines).
-- [ ] **Step 4:** Redeliver one webhook from the repo's settings page ("Redeliver") while still running → no new letter.
+- [ ] **Step 4:** Redeliver one webhook while still running → no new letter. (Through `gh webhook forward` a GitHub redelivery fails the signature check, so replay a signed delivery with the same `X-GitHub-Delivery` to the receiver instead.)
 - [ ] **Step 5:** `stop`, add a comment, `start` again → the comment arrives once via catch-up.
 - [ ] **Step 6:** Put an org repo PR in the state file without `--allow` → `needs approval: <owner/repo>`, no hook created there (`gh api repos/<org>/<repo>/hooks` not called; check the log).
 - [ ] **Step 7:** Close the PR, wait 10 minutes → the daemon stops itself; `gh api repos/<owner>/<test-repo>/hooks --jq 'length'` → 0.
