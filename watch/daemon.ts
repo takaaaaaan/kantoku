@@ -75,9 +75,10 @@ export type DaemonContext = {
   lastOpenAt: Date
   lastPollAt: Map<string, number>
   // Repos to read from GitHub again (a reconnect, or a read that failed). A repo leaves
-  // this set at the end of a tick whose catch-up read every followed PR in it. Sending is
-  // not its business: unsent letters wait in the outbox.
-  toCatchUp: Set<string>
+  // it at the end of a tick whose catch-up read every followed PR in it, and only if no
+  // new request came while that catch-up ran. Sending is not its business: unsent letters
+  // wait in the outbox.
+  toCatchUp: CatchUpQueue
   // PRs whose last reads failed: how many in a row, and when the last one was.
   readFailures: Map<string, { count: number; at: number }>
   relayTroubles: Map<string, Trouble>
@@ -86,7 +87,30 @@ export type DaemonContext = {
   lock: Promise<unknown>
 }
 
-const IDLE_MS = 10 * 60_000
+// The catch-up requests. Every add (a reconnect, a failed read) raises the repo's
+// generation, so a catch-up that started before a request cannot finish it.
+export class CatchUpQueue extends Set<string> {
+  // Created lazily: the Set constructor may call add before class fields exist.
+  private generations: Map<string, number> | undefined
+
+  override add(repo: string): this {
+    this.generations ??= new Map()
+    this.generations.set(repo, this.generation(repo) + 1)
+
+    return super.add(repo)
+  }
+
+  generation(repo: string): number {
+    return this.generations?.get(repo) ?? 0
+  }
+
+  // Removes the request only if nothing asked again since that generation was read.
+  finish(repo: string, generation: number) {
+    if (this.generation(repo) === generation) this.delete(repo)
+  }
+}
+
+const IDLE_MS =10 * 60_000
 const POLL_MS = 10 * 60_000
 const LOG_MAX = 1024 * 1024
 const TROUBLES_KEEP = 20
@@ -113,7 +137,7 @@ export async function createContext(options: ContextOptions): Promise<DaemonCont
     targets: [],
     lastOpenAt: now,
     lastPollAt: new Map(),
-    toCatchUp: new Set(),
+    toCatchUp: new CatchUpQueue(),
     readFailures: new Map(),
     relayTroubles: new Map(),
     newTroubles: [],
@@ -160,7 +184,8 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
   return serial(ctx, async () => {
     await readTargets(ctx)
     const open = openPrs(ctx)
-    const toCatchUp = new Set(ctx.toCatchUp)
+    // The requests this tick answers, each with its generation: one that comes during the reads is newer and stays.
+    const toCatchUp = new Map([...ctx.toCatchUp].map(repo => [repo, ctx.toCatchUp.generation(repo)]))
 
     const repos = [...new Set(open.map(pr => pr.repo))].sort()
     const forwarded: string[] = []
@@ -202,7 +227,7 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
         unread.add(pr.repo)
       }
     }
-    for (const repo of toCatchUp) if (!unread.has(repo)) ctx.toCatchUp.delete(repo)
+    for (const [repo, generation] of toCatchUp) if (!unread.has(repo)) ctx.toCatchUp.finish(repo, generation)
     for (const repo of repos) {
       if (ctx.repos[repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(repo) ?? 0) >= POLL_MS) ctx.lastPollAt.set(repo, now.getTime())
     }

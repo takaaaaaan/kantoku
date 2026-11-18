@@ -31,6 +31,7 @@ const STATE = `run: run_1
 |---|---|---|---|---|---|
 | A | wt | ctx_1 | ${REPO}#1 | in progress | — |
 | B | wt | ctx_2 | ${REPO}#2 | in progress | — |
+| C | wt | ctx_3 | ${REPO}#3 | in progress | — |
 `
 const targets = parseTargets('mgr', STATE)
 
@@ -83,13 +84,19 @@ async function simulate(seed: number): Promise<string[]> {
   mkdirSync(home)
   writeFileSync(join(stateRoot, 'mgr', 'state.md'), STATE)
 
-  const prs: Pr[] = [1, 2].map(number => ({ number, state: 'OPEN', head: `h${number}0`, bucket: 'pass', heads: [{ sha: `h${number}0`, bucket: 'pass' }], comments: [], reviews: [] }))
+  // PR 3 gets no events: it is only read. Only PR 2 ever closes, so PR 1 stays open to the end.
+  const prs: Pr[] = [1, 2, 3].map(number => ({ number, state: 'OPEN', head: `h${number}0`, bucket: 'pass', heads: [{ sha: `h${number}0`, bucket: 'pass' }], comments: [], reviews: [] }))
   let pOrca = 0
   let pGh = 0
   let nextId = 100
   let minute = 0
   const now = () => new Date(Date.parse('2026-11-18T10:00:00Z') + minute * 60_000)
   const sent: string[] = []
+  // A lost webhook means the forwarder was disconnected; its reconnect comes later (an event,
+  // a restart, or the middle of a catch-up read) and is owed until it comes.
+  let reconnectOwed = false
+  let pDuringRead = 0.1
+  let duringRead = (_reading: number) => {}
 
   const run: Run = async (cmd, args) => {
     if (cmd === 'orca') {
@@ -105,6 +112,7 @@ async function simulate(seed: number): Promise<string[]> {
     if (args[0] === 'pr') {
       const pr = prs.find(p => p.number === Number(args[2]))
       if (pr === undefined) return { code: 1, stdout: '', stderr: 'no such PR' }
+      if (args[1] === 'view') duringRead(pr.number)
       if (args[1] === 'view') return ok({ state: pr.state, headRefOid: pr.head, mergedBy: pr.state === 'MERGED' ? { login: 'merger' } : null })
       if (args[1] === 'checks') return ok([{ name: 'b', bucket: pr.bucket }], pr.bucket === 'pending' ? 8 : pr.bucket === 'fail' ? 1 : 0)
     }
@@ -125,16 +133,35 @@ async function simulate(seed: number): Promise<string[]> {
   const must: WatchEvent[] = []
   const deliver = async (event: string, payload: unknown) => {
     const id = `d${nextId++}`
-    if (r.next() < 0.8) await handleDelivery(ctx, event, id, payload, now())
-    if (r.next() < 0.15) await handleDelivery(ctx, event, id, payload, now())
+    let delivered = false
+    if (r.next() < 0.8) (await handleDelivery(ctx, event, id, payload, now()), (delivered = true))
+    if (r.next() < 0.15) (await handleDelivery(ctx, event, id, payload, now()), (delivered = true))
+    if (!delivered) reconnectOwed = true
+  }
+  const reconnect = () => {
+    reconnectOwed = false
+    relay.connect(REPO)
   }
   const repository = { full_name: REPO }
+  // While a catch-up reads GitHub, a comment lands on an open PR, its webhook is lost in a short
+  // disconnect, and the forwarder reconnects, all before the read ends.
+  // The comment lands on another PR than the one being read: one this catch-up may have read already.
+  duringRead = (reading: number) => {
+    const open = prs.filter(p => p.state === 'OPEN' && p.number !== reading)
+    if (open.length === 0 || r.next() >= pDuringRead) return
+    const pr = r.pick(open)
+    const id = nextId++
+    const c = { id, user: { login: `u${id}`, type: 'User' }, body: `text ${id}`, html_url: `https://x/c${id}`, created_at: now().toISOString() }
+    pr.comments.push(c)
+    must.push({ kind: 'comment', pr: { repo: REPO, number: pr.number }, id, author: c.user.login, body: c.body, url: c.html_url })
+    reconnect()
+  }
 
   pOrca = r.pick([0.1, 0.3, 0.6])
   pGh = r.pick([0, 0.1, 0.3])
   for (let step = 0; step < STEPS; step++) {
     minute++
-    const open = prs.filter(p => p.state === 'OPEN')
+    const open = prs.filter(p => p.state === 'OPEN' && p.number !== 3)
     const pr = open.length > 0 ? r.pick(open) : undefined
     const kind = r.pick(['comment', 'review', 'ci', 'close', 'restart', 'reconnect', 'tick', 'tick', 'tick'] as const)
     if (pr !== undefined && kind === 'comment') {
@@ -158,7 +185,7 @@ async function simulate(seed: number): Promise<string[]> {
       pr.bucket = r.pick(['pass', 'fail'] as const)
       pr.heads.push({ sha, bucket: pr.bucket })
       await deliver('check_suite', { action: 'completed', check_suite: { head_sha: sha }, repository })
-    } else if (pr !== undefined && kind === 'close') {
+    } else if (pr !== undefined && pr.number === 2 && kind === 'close') {
       const merged = r.next() < 0.5
       pr.state = merged ? 'MERGED' : 'CLOSED'
       must.push({ kind: 'closed', pr: { repo: REPO, number: pr.number }, merged, by: merged ? 'merger' : '' })
@@ -167,15 +194,25 @@ async function simulate(seed: number): Promise<string[]> {
       relay = fakeRelay()
       ctx = await make()
       await tick(ctx, now())
-      relay.connect(REPO)
-    } else if (kind === 'reconnect') relay.connect(REPO)
+      reconnect()
+    } else if (kind === 'reconnect' && reconnectOwed) reconnect() // a forwarder reconnects only after a disconnect
     else await tick(ctx, now())
   }
 
-  // The failures stop. A reconnect replays what webhooks lost; a few ticks settle the rest.
+  // The failures stop. A last reconnect starts a catch-up, and during its reads one more comment
+  // lands with its webhook lost and the forwarder reconnecting: nothing comes after it but plain ticks.
   pOrca = 0
   pGh = 0
-  relay.connect(REPO)
+  reconnect()
+  pDuringRead = 1
+  const lastInjection = duringRead
+  duringRead = (reading: number) => {
+    // While the last open PR is read, so the comment lands on one this catch-up has read already.
+    if (reading !== Math.max(...prs.filter(p => p.state === 'OPEN').map(p => p.number))) return
+    const before = must.length
+    lastInjection(reading)
+    if (must.length > before) duringRead = () => {}
+  }
   // Ten minutes of ticks: past the longest retry wait (5 minutes) of a letter that failed last.
   for (let i = 0; i < 6; i++) {
     minute += 2

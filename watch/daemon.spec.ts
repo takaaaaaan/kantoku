@@ -615,3 +615,36 @@ test('a delivery is marked handled only after its letters are written to outbox.
   assert.equal(ctx.seen.has('delivery:d-1'), true)
   assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), true)
 })
+
+// Verifier run 6 (7a485f6): a reconnect during a catch-up of the same repo was cleared with the old request.
+test('a reconnect that comes while a catch-up of the same repo is reading stays queued for the next tick', async () => {
+  const s = setup(['| A | wt | ctx_1 | me-login/app#1 | x | — |', '| B | wt | ctx_2 | me-login/app#2 | x | — |'])
+  const gh = { comments: [] as unknown[] }
+  let duringPr2: (() => void) | undefined
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') {
+      if (args[2] === '2') duringPr2?.()
+      return json({ state: 'OPEN', headRefOid: head, mergedBy: null })
+    }
+    if (args[0] === 'pr' && args[1] === 'checks') return json([])
+    if (args[1] === 'repos/me-login/app/issues/1/comments') return json([gh.comments])
+
+    return json([[]])
+  })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  s.relay.connect('me-login/app')
+  duringPr2 = () => {
+    duringPr2 = undefined
+    // PR 1 was read already in this catch-up; a comment lands on it while the forwarder is down, then it reconnects.
+    gh.comments.push({ id: 91, user: { login: 'x', type: 'User' }, body: 'hi', html_url: 'u', created_at: at(0.5).toISOString() })
+    s.relay.connect('me-login/app')
+  }
+  await tick(ctx, at(1))
+  assert.equal(ctx.toCatchUp.has('me-login/app'), true, 'the newer request is still there')
+  await tick(ctx, at(2))
+  assert.equal(ctx.seen.has('comment:me-login/app#1:91>child:ctx_1'), true)
+  assert.equal(ctx.toCatchUp.has('me-login/app'), false)
+})
