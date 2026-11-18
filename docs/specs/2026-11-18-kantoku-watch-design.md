@@ -250,9 +250,13 @@ The child letter and the manager line for the same fact get keys with `>child:<c
 Webhooks are not replayed for the time kantoku-watch was stopped. So at `start`, when a PR first appears in a state.md, and when a forwarder (re)connects, catch-up runs for the PRs involved:
 
 ```text
-gh pr view <n> --repo <repo> --json state,mergedAt,closedAt,headRefOid,reviews,comments,url
+gh pr view <n> --repo <repo> --json state,mergedAt,headRefOid,mergedBy
 gh pr checks <n> --repo <repo> --json name,bucket
+gh api repos/<repo>/pulls/<n>/reviews --paginate --slurp
+gh api repos/<repo>/issues/<n>/comments --paginate --slurp
 ```
+
+Reviews and comments come from the REST API: `gh pr view --json reviews,comments` gives GraphQL node IDs (`PRR_…`, `IC_…`), while webhooks carry numeric IDs, and the dedupe keys must match. `gh pr checks` exits 8 while checks are pending and 1 when one failed; its JSON is read in both cases.
 
 What it reports:
 
