@@ -237,7 +237,7 @@ Two layers, both stored in `seen.json`:
 | Closed | `closed:<repo>#<n>:<merged\|closed>` |
 | Trouble | `trouble:<repo>:<kind>:<date>` (once per day per kind) |
 
-The child letter and the manager line for the same fact get keys with `>child` and `>run` appended, so a failed send of one does not block the other.
+The child letter and the manager line for the same fact get keys with `>child:<ctx>` and `>run:<run>` appended, so a failed send of one does not block the other, and two rows naming the same PR each get their letter.
 
 - A new push gives a new head SHA, so its CI result is a new fact.
 - A rerun on the same SHA that turns red into green changes the key, so it is sent. A rerun that ends the same way is not.
