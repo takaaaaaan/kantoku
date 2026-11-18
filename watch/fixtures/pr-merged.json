@@ -1,0 +1,21 @@
+{
+  "action": "closed",
+  "number": 12,
+  "pull_request": {
+    "number": 12,
+    "merged": true,
+    "merged_by": {
+      "login": "merger-login"
+    }
+  },
+  "sender": {
+    "login": "merger-login"
+  },
+  "repository": {
+    "full_name": "Owner/Repo",
+    "name": "Repo",
+    "owner": {
+      "login": "Owner"
+    }
+  }
+}

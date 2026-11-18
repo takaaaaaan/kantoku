@@ -1,0 +1,24 @@
+{
+  "action": "submitted",
+  "review": {
+    "id": 102,
+    "state": "changes_requested",
+    "body": "Please split the parser out of the handler.",
+    "html_url": "https://github.com/Owner/Repo/pull/12#pullrequestreview-102",
+    "user": {
+      "login": "reviewer-login",
+      "type": "User"
+    }
+  },
+  "pull_request": {
+    "number": 12,
+    "html_url": "https://github.com/Owner/Repo/pull/12"
+  },
+  "repository": {
+    "full_name": "Owner/Repo",
+    "name": "Repo",
+    "owner": {
+      "login": "Owner"
+    }
+  }
+}

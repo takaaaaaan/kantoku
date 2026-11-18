@@ -1,0 +1,22 @@
+{
+  "action": "created",
+  "issue": {
+    "number": 13
+  },
+  "comment": {
+    "id": 202,
+    "body": "Issue comment",
+    "html_url": "https://github.com/Owner/Repo/issues/13#issuecomment-202",
+    "user": {
+      "login": "commenter-login",
+      "type": "User"
+    }
+  },
+  "repository": {
+    "full_name": "Owner/Repo",
+    "name": "Repo",
+    "owner": {
+      "login": "Owner"
+    }
+  }
+}

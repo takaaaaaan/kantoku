@@ -1,0 +1,12 @@
+{
+  "sha": "1a2b3c4d5e6f",
+  "state": "success",
+  "context": "ci/build",
+  "repository": {
+    "full_name": "Owner/Repo",
+    "name": "Repo",
+    "owner": {
+      "login": "Owner"
+    }
+  }
+}
