@@ -137,7 +137,7 @@ Files on disk, all under `~/.kantoku-watch/` (outside `~/.kantoku/`, so the mana
 |---|---|
 | `status.json` | pid, port, start time, `lastAliveAt`, forwarded repos and their state, last troubles |
 | `seen.json` | `{ [key]: isoTime }` for every letter sent and every delivery ID handled |
-| `prs.json` | `{ [repo#n]: firstSeenAt }`, to tell a new PR from a known one at catch-up |
+| `prs.json` | `{ [repo#n]: { firstSeenAt, closedAt? } }`, to tell a new PR from a known one at catch-up and a closed PR from an open one; records of PRs gone from every state.md are dropped after 14 days |
 | `secret` | the random webhook secret, made at first start, mode 600 |
 | `watch.log` | one line per event, letter, and trouble; rotated at 1 MB |
 
@@ -269,6 +269,8 @@ What it reports:
 
 All of it goes through the same keys, so anything already sent is skipped. A first-ever start has no `lastAliveAt` and treats every PR as first seen.
 
+For a known PR, "after `lastAliveAt`" is implemented as "after the PR's `firstSeenAt`": the window is wider, and the letter keys drop what was already sent. A PR seen for the first time in rows that are all done (for example old merged rows) is caught up silently: its facts are stored as sent and no letter goes out, so a first start does not flood the manager with old merges.
+
 ## Who starts kantoku-watch
 
 The manager may not run it (SKILL.md, "The manager's role"). Candidates:
@@ -335,6 +337,8 @@ node watch/cli.ts run                              the daemon itself, in the for
 ```
 
 `start` launches `run` as a detached process with `ORCA_TERMINAL_HANDLE` and the other `ORCA_*` variables removed from its environment. Plan task 1 showed that `orca orchestration send --to dispatch:…` and `--to run:…` both work from such a process. Removing the variables does not hide the sender: Orca still shows the pane that started the daemon as the sender. Letters are identified by the `kantoku-watch:` subject and the `[kantoku-watch]` first line, not by the sender. Child letters go to `dispatch:`.
+
+`KANTOKU_HOME` and `KANTOKU_WATCH_HOME` override `~/.kantoku` and `~/.kantoku-watch` (for testing without touching the real ones).
 
 `stop` talks to the daemon over its local HTTP server (`POST /shutdown` with the secret), so the daemon shuts its forwarders down itself on every OS.
 

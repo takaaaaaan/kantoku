@@ -4,6 +4,7 @@ import { EVENTS, ghForwardRelay } from './gh-forward.ts'
 import type { Spawn } from './gh-forward.ts'
 import { fakeRun } from '../testing.ts'
 import type { Answer } from '../testing.ts'
+import type { Run } from '../run.ts'
 
 type Proc = { args: string[]; killed: boolean; exit(code: number, stderr?: string): void; stderr(text: string): void }
 
@@ -33,7 +34,7 @@ function fakeSpawn(): Spawn & { procs: Proc[] } {
 }
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5))
-const relay = (spawn: Spawn, run = fakeRun(() => ({}))) => ghForwardRelay({ spawn, run, url: 'http://127.0.0.1:4567/webhook', secret: 's3', delays: [0, 0, 0] })
+const relay = (spawn: Spawn, run: Run = fakeRun(() => ({}))) => ghForwardRelay({ spawn, run, url: 'http://127.0.0.1:4567/webhook', secret: 's3', delays: [0, 0, 0] })
 const live = (spawn: { procs: Proc[] }) => spawn.procs.filter(p => !p.killed)
 
 test('sync starts one forwarder per repo with the exact flags', async () => {

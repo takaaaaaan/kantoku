@@ -37,7 +37,7 @@ export function factKey(event: WatchEvent, now: Date = new Date()): string | und
 
 export function lettersFor(event: WatchEvent, targets: WatchTarget[], now: Date = new Date()): Letter[] {
   const fact = factKey(event, now)
-  if (fact === undefined) return []
+  if (fact === undefined || event.kind === 'ci-trigger') return []
   const letters: Letter[] = []
   const add = (letter: Letter) => {
     if (!letters.some(l => l.key === letter.key)) letters.push(letter)

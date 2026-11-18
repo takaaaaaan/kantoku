@@ -1,0 +1,316 @@
+// kantoku-watch commands: start, stop, status, catchup, run.
+// `start` launches `run` as a detached process and returns; the daemon then
+// stops itself when no watched PR is open for 10 minutes.
+
+import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { catchUp } from './catchup.ts'
+import { createContext, handleDelivery, isApproved, log, login, readPrs, statusOf, tick, writeJson } from './daemon.ts'
+import type { Status } from './daemon.ts'
+import type { Trouble } from './events.ts'
+import { sendLetters } from './notify.ts'
+import { startReceiver } from './receiver.ts'
+import { ghForwardRelay, realSpawn } from './relays/gh-forward.ts'
+import { lettersFor } from './route.ts'
+import { realRun } from './run.ts'
+import type { Run } from './run.ts'
+import { openSeen } from './seen.ts'
+import { prKey, readAllTargets } from './targets.ts'
+
+export type CliDeps = {
+  run: Run
+  out: (line: string) => void
+  sleep: (ms: number) => Promise<void>
+  isAlive: (pid: number) => boolean
+  spawnDaemon: (args: string[], env: Record<string, string | undefined>) => number | undefined
+  post: (url: string, headers: Record<string, string>) => Promise<number>
+}
+
+type Env = Record<string, string | undefined>
+type Paths = { home: string; stateRoot: string }
+
+const USAGE = `usage: node watch/cli.ts start [--allow owner/repo ...]   start the daemon, or report the running one
+       node watch/cli.ts stop                             stop it and its forwarders
+       node watch/cli.ts status                           running?, repos, troubles
+       node watch/cli.ts catchup                          one catch-up pass, no forwarding
+       node watch/cli.ts run [--allow owner/repo ...]     the daemon itself, in the foreground`
+
+const FIX: Partial<Record<Trouble, string>> = {
+  'gh-missing': 'gh (GitHub CLI) is not installed. Ask the user to install it: https://cli.github.com',
+  'gh-not-logged-in': 'gh is not logged in. Ask the user to run: gh auth login',
+  'extension-missing': 'The gh extension cli/gh-webhook is missing. Ask the user before installing: gh extension install cli/gh-webhook',
+  'scope-missing': 'The gh token lacks the admin:repo_hook scope. Ask the user to run: gh auth refresh -h github.com -s admin:repo_hook',
+}
+
+const FORWARDER_HOOK_URL = 'https://webhook-forwarder.github.com/hook'
+const LOOP_MS = 15_000
+const START_WAIT_MS = 10_000
+
+const realDeps: CliDeps = {
+  run: realRun,
+  out: line => console.log(line),
+  sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  isAlive: pid => {
+    try {
+      process.kill(pid, 0)
+
+      return true
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'EPERM'
+    }
+  },
+  spawnDaemon: (args, env) => {
+    const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', windowsHide: true, env: env as NodeJS.ProcessEnv })
+    child.unref()
+
+    return child.pid
+  },
+  post: async (url, headers) => (await fetch(url, { method: 'POST', headers })).status,
+}
+
+function pathsOf(env: Env): Paths {
+  const base = env.USERPROFILE ?? env.HOME ?? homedir()
+
+  return {
+    home: env.KANTOKU_WATCH_HOME ?? join(base, '.kantoku-watch'),
+    stateRoot: env.KANTOKU_HOME ?? join(base, '.kantoku'),
+  }
+}
+
+function allowOf(args: string[]): string[] | undefined {
+  const allow: string[] = []
+  for (let at = 0; at < args.length; at++) {
+    if (args[at] !== '--allow') return undefined
+    const repo = args[++at]
+    if (repo === undefined || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return undefined
+    allow.push(repo.toLowerCase())
+  }
+
+  return allow
+}
+
+export async function main(argv: string[], env: Env, given: Partial<CliDeps> = {}): Promise<number> {
+  const deps: CliDeps = { ...realDeps, ...given }
+  const paths = pathsOf(env)
+  const [command, ...rest] = argv
+  const allow = allowOf(rest)
+  const restOk = command === 'start' || command === 'run' ? allow !== undefined : rest.length === 0
+  if (!restOk || allow === undefined) {
+    deps.out(USAGE)
+
+    return 1
+  }
+  switch (command) {
+    case 'start': return start(paths, allow, env, deps)
+    case 'stop': return stop(paths, deps)
+    case 'status': return status(paths, deps)
+    case 'catchup': return catchupOnce(paths, deps)
+    case 'run': return runDaemon(paths, allow, deps)
+    default:
+      deps.out(USAGE)
+
+      return 1
+  }
+}
+
+async function readStatus(paths: Paths): Promise<Status | undefined> {
+  try {
+    const status = JSON.parse(await readFile(join(paths.home, 'status.json'), 'utf8'))
+
+    return typeof status?.pid === 'number' ? status : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function running(paths: Paths, deps: CliDeps): Promise<Status | undefined> {
+  const status = await readStatus(paths)
+
+  return status !== undefined && status.pid > 0 && deps.isAlive(status.pid) ? status : undefined
+}
+
+function printStatus(status: Status, deps: CliDeps) {
+  deps.out(`kantoku-watch: running (pid ${status.pid}, port ${status.port})`)
+  deps.out(`started: ${status.startedAt}  last alive: ${status.lastAliveAt}`)
+  const repos = Object.entries(status.repos ?? {})
+  if (repos.length === 0) deps.out('repos: none yet')
+  for (const [repo, state] of repos) deps.out(`  ${repo}  ${state}`)
+  for (const trouble of status.troubles ?? []) deps.out(`trouble: ${trouble}`)
+}
+
+async function ensureSecret(paths: Paths): Promise<string> {
+  const file = join(paths.home, 'secret')
+  try {
+    const secret = (await readFile(file, 'utf8')).trim()
+    if (/^[0-9a-f]{64}$/.test(secret)) return secret
+  } catch {}
+  await mkdir(paths.home, { recursive: true })
+  const secret = randomBytes(32).toString('hex')
+  await writeFile(file, secret, { mode: 0o600 })
+
+  return secret
+}
+
+async function preflight(deps: CliDeps): Promise<boolean> {
+  const relay = ghForwardRelay({ spawn: realSpawn, run: deps.run, url: '', secret: '' })
+  const problems = await relay.preflight()
+  for (const problem of problems) deps.out(`cannot start: ${FIX[problem] ?? problem}`)
+
+  return problems.length === 0
+}
+
+async function start(paths: Paths, allow: string[], env: Env, deps: CliDeps): Promise<number> {
+  const live = await running(paths, deps)
+  if (live !== undefined) {
+    deps.out(`kantoku-watch: already running (pid ${live.pid})`)
+    printStatus(live, deps)
+
+    return 0
+  }
+  if (!(await preflight(deps))) return 2
+  await ensureSecret(paths)
+
+  const me = await login(deps.run)
+  const prs = await readPrs(join(paths.home, 'prs.json'))
+  const repos = new Set((await readAllTargets(paths.stateRoot)).filter(t => prs[prKey(t.pr)]?.closedAt === undefined).map(t => t.pr.repo))
+  for (const repo of [...repos].sort()) if (!isApproved({ me, allow: new Set(allow) }, repo)) deps.out(`needs approval: ${repo}`)
+
+  const childEnv = Object.fromEntries(Object.entries(env).filter(([key]) => !key.startsWith('ORCA_')))
+  const cli = fileURLToPath(import.meta.url)
+  const pid = deps.spawnDaemon([cli, 'run', ...allow.flatMap(repo => ['--allow', repo])], childEnv)
+  for (let waited = 0; pid !== undefined && waited <= START_WAIT_MS; waited += 250) {
+    const status = await readStatus(paths)
+    if (status?.pid === pid) {
+      printStatus(status, deps)
+
+      return 0
+    }
+    if (!deps.isAlive(pid)) break
+    await deps.sleep(250)
+  }
+  deps.out(`kantoku-watch: did not start. See ${join(paths.home, 'watch.log')}`)
+
+  return 1
+}
+
+async function stop(paths: Paths, deps: CliDeps): Promise<number> {
+  const live = await running(paths, deps)
+  if (live === undefined) {
+    deps.out('kantoku-watch: not running')
+
+    return 0
+  }
+  const secret = await ensureSecret(paths)
+  try {
+    await deps.post(`http://127.0.0.1:${live.port}/shutdown`, { 'x-kantoku-watch-secret': secret })
+  } catch {}
+  for (let waited = 0; deps.isAlive(live.pid) && waited < START_WAIT_MS; waited += 250) await deps.sleep(250)
+  if (deps.isAlive(live.pid)) {
+    deps.out(`kantoku-watch: pid ${live.pid} did not stop`)
+
+    return 1
+  }
+  deps.out('kantoku-watch: stopped')
+
+  // GitHub drops a forwarder's hook when its connection closes. List any left behind; deleting is the user's call.
+  await deps.sleep(2000)
+  for (const [repo, state] of Object.entries(live.repos ?? {})) {
+    if (state === 'needs-approval' || state === 'failed') continue
+    const result = await deps.run('gh', ['api', `repos/${repo}/hooks`, '--jq', `[.[] | select(.config.url == "${FORWARDER_HOOK_URL}") | .id]`])
+    const ids = result.code === 0 ? (JSON.parse(result.stdout || '[]') as number[]) : []
+    for (const id of ids) deps.out(`leftover forwarder hook on ${repo}: id ${id} (gh api -X DELETE repos/${repo}/hooks/${id} if no other forwarder of yours is running)`)
+  }
+
+  return 0
+}
+
+async function status(paths: Paths, deps: CliDeps): Promise<number> {
+  const live = await running(paths, deps)
+  if (live !== undefined) printStatus(live, deps)
+  else {
+    const last = await readStatus(paths)
+    deps.out(`kantoku-watch: not running${last?.lastAliveAt ? ` (last alive ${last.lastAliveAt})` : ''}`)
+  }
+
+  return 0
+}
+
+async function catchupOnce(paths: Paths, deps: CliDeps): Promise<number> {
+  await mkdir(paths.home, { recursive: true })
+  const now = new Date()
+  const seen = await openSeen(join(paths.home, 'seen.json'))
+  const prs = await readPrs(join(paths.home, 'prs.json'))
+  const targets = await readAllTargets(paths.stateRoot)
+  let sent = 0
+  for (const key of new Set(targets.map(t => prKey(t.pr)))) {
+    const pr = targets.find(t => prKey(t.pr) === key)?.pr
+    if (pr === undefined || prs[key]?.closedAt !== undefined) continue
+    const record = prs[key]
+    for (const event of await catchUp(deps.run, pr, record !== undefined, record === undefined ? undefined : new Date(record.firstSeenAt)))
+      sent += (await sendLetters(deps.run, lettersFor(event, targets, now), seen, now)).sent
+  }
+  await seen.save()
+  deps.out(`kantoku-watch: catch-up sent ${sent} letter(s)`)
+
+  return 0
+}
+
+async function runDaemon(paths: Paths, allow: string[], deps: CliDeps): Promise<number> {
+  await mkdir(paths.home, { recursive: true })
+  if (!(await preflight(deps))) return 2
+  const secret = await ensureSecret(paths)
+  let stopping = false
+  let wake = () => {}
+  const stopNow = () => {
+    stopping = true
+    wake()
+  }
+  let ctx: Awaited<ReturnType<typeof createContext>> | undefined
+  const receiver = await startReceiver({
+    secret,
+    onDelivery: (event, id, payload) => {
+      if (ctx === undefined) return
+      handleDelivery(ctx, event, id, payload, new Date()).catch(error => log(paths, `delivery error: ${String(error)}`))
+    },
+    onShutdown: stopNow,
+  })
+  const relay = ghForwardRelay({ spawn: realSpawn, run: deps.run, url: `http://127.0.0.1:${receiver.port}/webhook`, secret })
+  ctx = await createContext({ run: deps.run, relay, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(allow), port: receiver.port, now: new Date() })
+  process.on('SIGINT', stopNow)
+  process.on('SIGTERM', stopNow)
+  await writeJson(join(paths.home, 'status.json'), statusOf(ctx, new Date()))
+  await log(paths, `started pid ${process.pid} port ${receiver.port}${allow.length > 0 ? ` allow ${allow.join(',')}` : ''}`)
+
+  while (!stopping) {
+    try {
+      if ((await tick(ctx, new Date())) === 'idle-stop') break
+    } catch (error) {
+      await log(paths, `tick error: ${String(error)}`)
+    }
+    if (stopping) break
+    await new Promise<void>(resolve => {
+      const timer = setTimeout(resolve, LOOP_MS)
+      wake = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+    })
+  }
+
+  await relay.stop()
+  await receiver.close()
+  await writeJson(join(paths.home, 'status.json'), { ...statusOf(ctx, new Date()), pid: 0 })
+  await log(paths, 'stopped')
+
+  return 0
+}
+
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main(process.argv.slice(2), process.env).then(code => {
+    process.exitCode = code
+  })
+}
