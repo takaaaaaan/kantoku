@@ -169,7 +169,8 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
       if (ctx.repos[repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(repo) ?? 0) >= POLL_MS) ctx.lastPollAt.set(repo, now.getTime())
     }
 
-    const stillOpen = openPrs(ctx).length > 0
+    // Only PRs it can follow keep it alive: a repo waiting for approval or without admin rights never reports a close.
+    const stillOpen = openPrs(ctx).some(pr => ctx.repos[pr.repo] === 'forwarding' || ctx.repos[pr.repo] === 'polling')
     if (stillOpen) ctx.lastOpenAt = now
     const watched = new Set(ctx.targets.map(t => prKey(t.pr)))
     ctx.seen.prune(watched, now)

@@ -233,3 +233,10 @@ test('letters are sent from the terminal that started the daemon', async () => {
   assert.ok(sends.length > 0)
   for (const call of sends) assert.deepEqual(call.slice(3, 5), ['--from', 'term_starter'])
 })
+
+test('a PR in a repo waiting for approval does not keep the daemon alive', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | some-org/app#2 | in progress | — |'])
+  const ctx = await s.make()
+  assert.equal(await tick(ctx, at(0)), 'continue')
+  assert.equal(await tick(ctx, at(11)), 'idle-stop')
+})

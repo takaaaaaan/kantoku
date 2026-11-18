@@ -120,12 +120,13 @@ export function windowsCommandLine(exe: string, args: string[]): string {
 function launchWindows(exe: string, args: string[]): number | undefined {
   const line = windowsCommandLine(exe, args).replace(/'/g, "''")
   const script = [
-    "$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
+    "$ProgressPreference = 'SilentlyContinue'",
+    "$si =New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
     `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${line}'; ProcessStartupInformation = $si }`,
     'if ($r.ReturnValue -ne 0) { exit 1 }',
     'Write-Output $r.ProcessId',
   ].join('; ')
-  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8' })
+  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   const pid = Number(out.trim())
 
   return Number.isInteger(pid) && pid > 0 ? pid : undefined
@@ -176,7 +177,7 @@ function printStatus(status: Status, deps: CliDeps) {
   deps.out(`kantoku-watch: running (pid ${status.pid}, port ${status.port})`)
   deps.out(`started: ${status.startedAt}  last alive: ${status.lastAliveAt}`)
   const repos = Object.entries(status.repos ?? {})
-  if (repos.length === 0) deps.out('repos: none yet')
+  if (repos.length === 0) deps.out('repos: none yet (the first round reads state.md within a few seconds; run status again)')
   for (const [repo, state] of repos) deps.out(`  ${repo}  ${state}`)
   for (const trouble of status.troubles ?? []) deps.out(`trouble: ${trouble}`)
 }
