@@ -58,7 +58,9 @@ export type DaemonContext = {
   targets: WatchTarget[]
   lastOpenAt: Date
   lastPollAt: Map<string, number>
+  // Repos to catch up. A repo leaves this set in one place only: the end of a tick whose catch-up for it read GitHub and sent every letter.
   toCatchUp: Set<string>
+  incomplete: Set<string>
   relayTroubles: Map<string, Trouble>
   newTroubles: { repo: string; problem: Trouble }[]
   emptyOnce: boolean
@@ -91,6 +93,7 @@ export async function createContext(options: ContextOptions): Promise<DaemonCont
     lastOpenAt: now,
     lastPollAt: new Map(),
     toCatchUp: new Set(),
+    incomplete: new Set(),
     relayTroubles: new Map(),
     newTroubles: [],
     emptyOnce: false,
@@ -136,9 +139,8 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
   return serial(ctx, async () => {
     await readTargets(ctx)
     const open = openPrs(ctx)
-    // This tick handles the repos queued so far. A letter that fails during the tick queues its repo again for the next one.
     const toCatchUp = new Set(ctx.toCatchUp)
-    for (const repo of toCatchUp) ctx.toCatchUp.delete(repo)
+    ctx.incomplete.clear()
 
     const repos = [...new Set(open.map(pr => pr.repo))].sort()
     const forwarded: string[] = []
@@ -169,6 +171,7 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
       if (ctx.prs[key] === undefined) await catchUpPr(ctx, pr, false, now)
       else if (toCatchUp.has(pr.repo) || due) await catchUpPr(ctx, pr, true, now)
     }
+    for (const repo of toCatchUp) if (!ctx.incomplete.has(repo)) ctx.toCatchUp.delete(repo)
     for (const repo of repos) {
       if (ctx.repos[repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(repo) ?? 0) >= POLL_MS) ctx.lastPollAt.set(repo, now.getTime())
     }
@@ -200,7 +203,8 @@ export function handleDelivery(ctx: DaemonContext, eventName: string, deliveryId
     if (event?.kind === 'ci-trigger') {
       for (const pr of openPrs(ctx).filter(pr => pr.repo === event.repo)) {
         const ci = await ciEvent(ctx.run, pr, event.headSha)
-        if (ci !== undefined) await report(ctx, ci, now)
+        if (ci === undefined) incomplete(ctx, pr.repo)
+        else if (ci !== 'pending') await report(ctx, ci, now)
       }
     } else if (event !== undefined) await report(ctx, event, now)
     if (deliveryId !== '') ctx.seen.add(deliveryKey, now)
@@ -236,7 +240,11 @@ async function catchUpPr(ctx: DaemonContext, pr: PrRef, known: boolean, now: Dat
   const key = prKey(pr)
   const record = ctx.prs[key]
   const events = await catchUp(ctx.run, pr, known, record === undefined ? undefined : new Date(record.firstSeenAt))
-  if (events === undefined) return
+  if (events === undefined) {
+    await log(ctx, `could not read ${key} from GitHub; tried again at the next tick`)
+
+    return incomplete(ctx, pr.repo)
+  }
   // A PR first seen in rows that are all done is old news: record it without letters.
   const quiet = !known && ctx.targets.filter(t => prKey(t.pr) === key).every(t => t.rowDone)
   let allSent = true
@@ -260,13 +268,19 @@ async function report(ctx: DaemonContext, event: WatchEvent, now: Date, quiet = 
       if (!ok) await log(ctx, `${result.failed} letter(s) not sent; tried again at the next tick`)
     }
   }
-  if (!ok && 'pr' in event) ctx.toCatchUp.add(event.pr.repo)
+  if (!ok && 'pr' in event) incomplete(ctx, event.pr.repo)
   if (ok && event.kind === 'closed' && ctx.targets.some(t => prKey(t.pr) === prKey(event.pr))) {
     const key = prKey(event.pr)
     ctx.prs[key] = { firstSeenAt: ctx.prs[key]?.firstSeenAt ?? now.toISOString(), closedAt: now.toISOString() }
   }
 
   return ok
+}
+
+// Something about this repo was not read or not sent: keep it queued for the next tick.
+function incomplete(ctx: DaemonContext, repo: string) {
+  ctx.toCatchUp.add(repo)
+  ctx.incomplete.add(repo)
 }
 
 // One catch-up pass over every open PR, without forwarding (the `catchup` command).
@@ -279,13 +293,13 @@ export async function catchUpOnce(ctx: DaemonContext, now: Date): Promise<void> 
   })
 }
 
-// One daemon per machine: the lock file holds the pid of the one that runs, and
-// the daemon touches it every tick. A lock is stale when its pid is dead or it was
-// not touched for 10 minutes (the pid may belong to another process by then).
-// Only a successful exclusive create ever wins, and taking over a stale lock is
-// done by the one process that creates `daemon.lock.claim`, so two starts at once
-// never both run.
-const LOCK_STALE_MS = 10 * 60_000
+// One daemon per machine: the lock file holds the pid of the one that runs.
+// The holder counts as running by the same rule `status` uses: a live pid and
+// either a lock touched in the last 2 minutes (the daemon's heartbeat touches it
+// every 15 s on its own timer, not inside a tick) or a receiver that answers the
+// authenticated ping. Only a successful exclusive create ever wins, and taking
+// over a stale lock is done by the one process that creates `daemon.lock.claim`.
+const LOCK_FRESH_MS = 2 * 60_000
 const CLAIM_STALE_MS = 30_000
 
 async function createOnly(path: string, pid: number): Promise<boolean> {
@@ -308,13 +322,21 @@ async function lockHolder(path: string): Promise<{ pid: number; touchedAt: numbe
   }
 }
 
-export async function acquireLock(home: string, pid: number, isAlive: (pid: number) => boolean): Promise<boolean> {
+export async function acquireLock(
+  home: string,
+  pid: number,
+  isAlive: (pid: number) => boolean,
+  answers: (holder: number) => Promise<boolean> = holder => answersPing(home, holder),
+): Promise<boolean> {
   const path = join(home, 'daemon.lock')
+  const holdsIt = async (holder: { pid: number; touchedAt: number } | undefined) =>
+    holder !== undefined && Number.isInteger(holder.pid) && holder.pid > 0 && isAlive(holder.pid) &&
+    (Date.now() - holder.touchedAt < LOCK_FRESH_MS || (await answers(holder.pid)))
+
   if (await createOnly(path, pid)) return true
   const holder = await lockHolder(path)
   if (holder?.pid === pid) return true
-  const live = holder !== undefined && Number.isInteger(holder.pid) && holder.pid > 0 && isAlive(holder.pid) && Date.now() - holder.touchedAt < LOCK_STALE_MS
-  if (live) return false
+  if (await holdsIt(holder)) return false
 
   const claim = `${path}.claim`
   const claimer = await lockHolder(claim)
@@ -322,7 +344,7 @@ export async function acquireLock(home: string, pid: number, isAlive: (pid: numb
   if (!(await createOnly(claim, pid))) return false
   try {
     const again = await lockHolder(path)
-    if (again !== undefined && again.pid !== holder?.pid) return false
+    if (again !== undefined && (again.pid !== holder?.pid || again.touchedAt !== holder?.touchedAt || (await holdsIt(again)))) return false
     await unlink(path).catch(() => {})
 
     return await createOnly(path, pid)
@@ -331,13 +353,38 @@ export async function acquireLock(home: string, pid: number, isAlive: (pid: numb
   }
 }
 
-async function touchLock(home: string) {
+// The holder is a running kantoku-watch if status.json in `home` names it and
+// its receiver answers POST /ping with the secret.
+export async function answersPing(home: string, holder: number): Promise<boolean> {
+  try {
+    const status = JSON.parse(await readFile(join(home, 'status.json'), 'utf8'))
+    const secret = (await readFile(join(home, 'secret'), 'utf8')).trim()
+    if (status?.pid !== holder || typeof status.port !== 'number' || status.port <= 0) return false
+    const res = await fetch(`http://127.0.0.1:${status.port}/ping`, {
+      method: 'POST',
+      headers: { 'x-kantoku-watch-secret': secret },
+      signal: AbortSignal.timeout(3000),
+    })
+
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+// The daemon's heartbeat: touches its lock. False when the lock is no longer
+// this process's (another daemon took it); the daemon then stops.
+export async function heartbeat(home: string): Promise<boolean> {
   const path = join(home, 'daemon.lock')
   try {
-    if (Number((await readFile(path, 'utf8')).trim()) !== process.pid) return
+    if (Number((await readFile(path, 'utf8')).trim()) !== process.pid) return false
     const now = new Date()
     await utimes(path, now, now)
-  } catch {}
+
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function releaseLock(home: string, pid: number): Promise<void> {
@@ -359,7 +406,6 @@ export function statusOf(ctx: DaemonContext, now: Date): Status {
 }
 
 async function saveAll(ctx: DaemonContext, now: Date) {
-  await touchLock(ctx.home)
   await ctx.seen.save()
   await savePrs(ctx)
   await writeJson(join(ctx.home, 'status.json'), statusOf(ctx, now))
@@ -370,7 +416,8 @@ async function savePrs(ctx: DaemonContext) {
 }
 
 export async function writeJson(path: string, value: unknown) {
-  const temp = `${path}.${process.pid}.tmp`
+  // The heartbeat timer and a tick can write status.json at the same time, so each write has its own temp file.
+  const temp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
   await writeFile(temp, JSON.stringify(value, null, 1))
   await rename(temp, path)
 }

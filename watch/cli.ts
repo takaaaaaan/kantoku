@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { acquireLock, catchUpOnce, createContext, handleDelivery, isApproved, log, login, readPrs, releaseLock, statusOf, tick, writeJson } from './daemon.ts'
+import { acquireLock, catchUpOnce, createContext, handleDelivery, heartbeat, isApproved, log, login, readPrs, releaseLock, statusOf, tick, writeJson } from './daemon.ts'
 import type { Status } from './daemon.ts'
 import type { Trouble } from './events.ts'
 import { startReceiver } from './receiver.ts'
@@ -370,6 +370,20 @@ async function runDaemon(paths: Paths, allow: string[], deps: CliDeps, from: str
   await writeJson(join(paths.home, 'status.json'), statusOf(ctx, new Date()))
   await log(paths, `started pid ${process.pid} port ${receiver.port}${allow.length > 0 ? ` allow ${allow.join(',')}` : ''}`)
 
+  // The heartbeat runs on its own timer, so a long tick (slow gh calls) does not
+  // make this daemon look dead. A lost lock means another daemon took over: stop.
+  const live = ctx
+  const beat = setInterval(() => {
+    heartbeat(paths.home).then(async held => {
+      if (!held) {
+        await log(paths, 'lost daemon.lock to another daemon; stopping')
+
+        return stopNow()
+      }
+      await writeJson(join(paths.home, 'status.json'), statusOf(live, new Date()))
+    }).catch(() => {})
+  }, LOOP_MS)
+
   while (!stopping) {
     try {
       if ((await tick(ctx, new Date())) === 'idle-stop') break
@@ -386,6 +400,7 @@ async function runDaemon(paths: Paths, allow: string[], deps: CliDeps, from: str
     })
   }
 
+  clearInterval(beat)
   await relay.stop()
   await receiver.close()
   await writeJson(join(paths.home, 'status.json'), { ...statusOf(ctx, new Date()), pid: 0 })

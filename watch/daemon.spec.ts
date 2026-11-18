@@ -1,9 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { acquireLock, createContext, handleDelivery, tick } from './daemon.ts'
+import { acquireLock, createContext, handleDelivery, heartbeat, tick } from './daemon.ts'
+import { startReceiver } from './receiver.ts'
 import type { Relay } from './relay.ts'
 import type { Trouble } from './events.ts'
 import { fakeRun, json } from './testing.ts'
@@ -367,10 +368,97 @@ test('a stale lock taken by many at once goes to exactly one', async () => {
   }
 })
 
-test('a lock not refreshed for 10 minutes is stale even if its pid is alive (pid reused)', async () => {
+const oldLock = (pid: number) => {
   const home = mkdtempSync(join(tmpdir(), 'kw-lock-old-'))
-  writeFileSync(join(home, 'daemon.lock'), '111')
+  writeFileSync(join(home, 'daemon.lock'), String(pid))
   const old = new Date(Date.now() - 11 * 60_000)
   utimesSync(join(home, 'daemon.lock'), old, old)
-  assert.equal(await acquireLock(home, 222, () => true), true)
+
+  return home
+}
+
+test('an old lock whose live pid does not answer the ping is stale (pid reused)', async () => {
+  assert.equal(await acquireLock(oldLock(111), 222, () => true, async () => false), true)
+})
+
+test('an old lock whose holder answers the ping is kept', async () => {
+  assert.equal(await acquireLock(oldLock(111), 222, () => true, async () => true), false)
+})
+
+test('heartbeat keeps the lock fresh and reports a lost lock', async () => {
+  const home = oldLock(process.pid)
+  const before = statSync(join(home, 'daemon.lock')).mtimeMs
+  assert.equal(await heartbeat(home), true)
+  assert.ok(statSync(join(home, 'daemon.lock')).mtimeMs > before)
+  writeFileSync(join(home, 'daemon.lock'), '999')
+  assert.equal(await heartbeat(home), false)
+})
+
+// A run where GitHub reads can be made to fail, and orca sends can be made to fail.
+function outage() {
+  const down = { orca: 0, view: 0, checks: 0 }
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return down.orca-- > 0 ? { code: 1, stderr: 'orca down' } : {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') return down.view-- > 0 ? { code: 1, stderr: 'HTTP 502' } : json({ state: 'OPEN', headRefOid: head, mergedBy: null })
+    if (args[0] === 'pr' && args[1] === 'checks') return down.checks-- > 0 ? { code: 4, stderr: 'HTTP 502' } : json([{ name: 'b', bucket: 'fail' }])
+    if (args[0] === 'api' && args[1]?.endsWith('/comments'))
+      return json([[{ id: 77, user: { login: 'x', type: 'User' }, body: 'hi', html_url: 'u', created_at: at(0.5).toISOString() }]])
+
+    return json([[]])
+  })
+
+  return { down, run }
+}
+const commentPayload = { action: 'created', issue: { number: 1, pull_request: {} }, comment: { id: 77, body: 'hi', html_url: 'u', user: { login: 'x', type: 'User' } }, repository: { full_name: 'me-login/app' } }
+
+test('a failed letter whose retry cannot read GitHub stays queued until it is sent', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const { down, run } = outage()
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  down.orca = 1
+  await handleDelivery(ctx, 'issue_comment', 'd-1', commentPayload, at(1))
+  down.view = 1
+  await tick(ctx, at(2))
+  assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), false)
+  await tick(ctx, at(3))
+  assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), true)
+})
+
+test('a CI trigger that cannot read GitHub queues the repo for catch-up', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const { down, run } = outage()
+  down.checks = 1
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  assert.equal(ctx.prs['me-login/app#1'], undefined, 'first-seen pass incomplete: not recorded')
+  await tick(ctx, at(1))
+  const key = 'ci:me-login/app#1@' + head + ':failed:b>child:ctx_1'
+  assert.equal(ctx.seen.has(key), true)
+
+  const t = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const o = outage()
+  const c = await createContext({ ...(await t.make()).options, run: o.run })
+  o.down.checks = 1
+  await tick(c, at(0))
+  await tick(c, at(1))
+  const trigger = { action: 'completed', check_suite: { head_sha: head }, repository: { full_name: 'me-login/app' } }
+  o.run.calls.length = 0
+  o.down.view = 1
+  await handleDelivery(c, 'check_suite', 'd-9', trigger, at(2))
+  assert.equal(c.toCatchUp.has('me-login/app'), true)
+})
+
+test('an old lock whose holder receiver answers the ping is kept, found through status.json', async () => {
+  const home = oldLock(process.pid)
+  const secret = 'c'.repeat(64)
+  const receiver = await startReceiver({ secret, onDelivery: () => {}, onShutdown: () => {} })
+  try {
+    writeFileSync(join(home, 'secret'), secret)
+    writeFileSync(join(home, 'status.json'), JSON.stringify({ pid: process.pid, port: receiver.port, startedAt: 'x', lastAliveAt: 'x', repos: {}, troubles: [] }))
+    assert.equal(await acquireLock(home, process.pid + 1, pid => pid === process.pid), false)
+  } finally {
+    await receiver.close()
+  }
 })

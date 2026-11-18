@@ -30,9 +30,9 @@ function gh(answers: { view?: Answer; checks?: Answer; reviews?: unknown[]; comm
   })
 }
 
-test('ciEvent: undefined while pending, a ci event when done', async () => {
-  assert.equal(await ciEvent(gh({ checks: checks(['pass', 'pending']) }), pr), undefined)
-  assert.equal(await ciEvent(gh({ checks: { code: 1, stderr: "no checks reported on the 'x' branch" } }), pr), undefined)
+test('ciEvent: pending while pending, a ci event when done', async () => {
+  assert.equal(await ciEvent(gh({ checks: checks(['pass', 'pending']) }), pr), 'pending')
+  assert.equal(await ciEvent(gh({ checks: { code: 1, stderr: "no checks reported on the 'x' branch" } }), pr), 'pending')
   const run = gh({ checks: checks(['pass', 'fail']) })
   assert.deepEqual(await ciEvent(run, pr), { kind: 'ci', pr, headSha: head, summary: { state: 'failed', failed: ['c1'], passed: 1, skipped: 0 } })
   assert.deepEqual(run.calls, [
@@ -42,8 +42,32 @@ test('ciEvent: undefined while pending, a ci event when done', async () => {
 })
 
 test('ciEvent: a trigger for another head is ignored', async () => {
-  assert.equal(await ciEvent(gh({}), pr, 'ffff'), undefined)
-  assert.equal((await ciEvent(gh({}), pr, head))?.kind, 'ci')
+  assert.equal(await ciEvent(gh({}), pr, 'ffff'), 'pending')
+  const event = await ciEvent(gh({}), pr, head)
+  assert.equal(typeof event === 'object' && event.kind, 'ci')
+})
+
+test('ciEvent: undefined when GitHub cannot be read', async () => {
+  assert.equal(await ciEvent(gh({ view: { code: 1, stderr: 'HTTP 502' } }), pr), undefined)
+  assert.equal(await ciEvent(gh({ checks: { code: 1, stderr: 'HTTP 502: Bad Gateway' } }), pr), undefined)
+})
+
+test('catchUp: reviews, comments, or checks that cannot be read give undefined', async () => {
+  const failing = (what: 'reviews' | 'comments' | 'checks') =>
+    fakeRun((_cmd, args) => {
+      if (args[0] === 'pr' && args[1] === 'view') return view()
+      if (args[0] === 'pr' && args[1] === 'checks') return what === 'checks' ? { code: 4, stderr: 'HTTP 502' } : checks(['pass'])
+      if (args[0] === 'api' && args[1]?.endsWith(`/${what}`)) return { code: 1, stderr: 'HTTP 502' }
+
+      return json([[]])
+    })
+  for (const what of ['reviews', 'comments', 'checks'] as const)
+    assert.equal(await catchUp(failing(what), pr, true, new Date(0)), undefined, what)
+})
+
+test('catchUp: a PR with no checks at all is not a failure', async () => {
+  const events = await catchUp(gh({ checks: { code: 1, stderr: "no checks reported on the 'x' branch" } }), pr, true, new Date())
+  assert.deepEqual(events, [])
 })
 
 test('catchUp, known PR: only reviews and comments after since', async () => {
