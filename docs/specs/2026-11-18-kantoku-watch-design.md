@@ -61,7 +61,8 @@ flowchart LR
   ST["~/.kantoku/*/state.md"] --> TG[targets.ts<br/>PR → dispatch, run]
   EV --> RT[route.ts]
   TG --> RT
-  RT --> SEEN[seen.ts<br/>drop duplicates]
+  RT --> OB[outbox.ts<br/>outbox.json, on disk first]
+  OB --> SEEN[seen.ts<br/>drop what was sent]
   SEEN --> NT[notify.ts<br/>orca orchestration send]
   NT --> CHILD[owner child<br/>dispatch:ctx_…]
   NT --> MGR[manager<br/>run:…]
@@ -72,9 +73,10 @@ The daemon loop, every 15 seconds:
 
 1. Read every `~/.kantoku/*/state.md` and build the watch targets (below).
 2. Tell the relay the set of repos that have an open watched PR. The relay starts forwarders for new repos and stops the ones no longer needed.
-3. For a PR seen for the first time, and for every repo whose forwarder (re)connected, run catch-up for that PR or repo.
-4. Write a heartbeat (`lastAliveAt`) to the status file.
-5. If no open watched PR has existed for 10 minutes, stop.
+3. For a PR seen for the first time, a closed PR not yet read once after its close, and every repo whose forwarder (re)connected or whose read failed, run catch-up for that PR or repo. Catch-up only puts letters in the outbox.
+4. Try every letter in the outbox once (see "The outbox" below).
+5. Write a heartbeat (`lastAliveAt`) to the status file.
+6. If for 10 minutes there has been no open watched PR and no letter in the outbox, stop.
 
 ## Data shapes (decided first)
 
@@ -137,7 +139,8 @@ Files on disk, all under `~/.kantoku-watch/` (outside `~/.kantoku/`, so the mana
 |---|---|
 | `status.json` | pid, port, start time, `lastAliveAt`, forwarded repos and their state, last troubles |
 | `seen.json` | `{ [key]: isoTime }` for every letter sent and every delivery ID handled |
-| `prs.json` | `{ [repo#n]: { firstSeenAt, closedAt? } }`, to tell a new PR from a known one at catch-up and a closed PR from an open one; records of PRs gone from every state.md are dropped after 14 days |
+| `outbox.json` | `{ [letterKey]: { letter, createdAt, attempts, lastTriedAt? } }`: every letter decided but not sent yet (see "The outbox") |
+| `prs.json` | `{ [repo#n]: { firstSeenAt?, closedAt?, finalReadAt? } }`: the PR's state only, never its letters. It tells a new PR (no `firstSeenAt`: its first full read has not succeeded) from a known one at catch-up, an open PR from a closed one, and a closed PR that still needs its last read (`finalReadAt` missing) from one that is done; records of PRs gone from every state.md are dropped after 14 days |
 | `secret` | the random webhook secret, made at first start, mode 600 |
 | `watch.log` | one line per event, letter, and trouble; rotated at 1 MB |
 
@@ -242,8 +245,33 @@ The child letter and the manager line for the same fact get keys with `>child:<c
 - A new push gives a new head SHA, so its CI result is a new fact.
 - A rerun on the same SHA that turns red into green changes the key, so it is sent. A rerun that ends the same way is not.
 - Catch-up builds the same keys, so a webhook and catch-up that see the same review send it once.
-- A key is written to `seen.json` only after `orca orchestration send` exits 0. If sending fails, the next trigger or the next catch-up tries again. A crash between send and write can repeat one letter; that is accepted.
+- A key is written to `seen.json` only after `orca orchestration send` exits 0. A crash between send and write can repeat one letter; that is accepted.
 - `seen.json` drops keys of PRs that have not been watched for 14 days.
+
+## The outbox
+
+Three earlier versions kept "letters not sent yet" as a side effect of other state: a repo stayed queued for catch-up, or a close was recorded only after its letters went out. Each time a different failure path (a failed `gh` read, a close that went out while a comment did not) cleared that state and lost a letter. So letters now have their own store, apart from the PR's state.
+
+```ts
+// outbox.json — letters decided but not sent yet
+type Entry = { letter: Letter; createdAt: string; attempts: number; lastTriedAt?: string }
+type OutboxFile = { [letterKey: string]: Entry }
+
+// prs.json — what kantoku-watch knows about a PR; nothing about letters
+type PrRecord = { firstSeenAt?: string; closedAt?: string; finalReadAt?: string }
+// A PR is read at the next tick when needsRead(record): no firstSeenAt yet, or closed without finalReadAt.
+```
+
+Rules:
+
+1. Every letter is written to `outbox.json` (temp file + rename) the moment it is decided, before the first try. A webhook delivery is marked handled in `seen.json` only after its letters are in the outbox.
+2. A letter leaves the outbox in one place only, `settle` in `outbox.ts`, for one of these reasons: the send exited 0; its key is already in `seen.json` (an earlier send succeeded); or it is dropped (rule 5). A close, a catch-up, a failed `gh` read, and a restart never touch the outbox.
+3. A close changes `prs.json` only. A closed PR's letters still in the outbox are sent like any other. After a close, catch-up reads the PR once more; the first successful read sets `finalReadAt`, so a comment or review whose webhook was lost before the close still becomes a letter. A close webhook is recorded at once, even for a PR not read yet: then the record has `closedAt` and no `firstSeenAt`, so its first catch-up is still the full first-seen read. A read that still says OPEN (GitHub's view can lag behind the webhook) does not undo the close; a reopened PR is not followed again.
+4. The duplicate check that decides a send happens in one place, just before it: a key already in `seen.json` is settled without sending (and logged). `put` also skips keys in `seen.json`, so catch-ups do not churn the file, and a letter already waiting keeps its entry and its attempt count. A quiet first-seen catch-up (rows all done) never marks a letter that is already waiting.
+5. A failed letter waits before its next try: 30 seconds, then twice as long each time, at most 5 minutes. So an Orca outage does not hold up every tick and delivery.
+6. A letter that has failed for 24 hours and at least 10 tries is dropped: `watch.log` gets `DROPPED <key> to <to> after <n> tries since <createdAt>: <subject>`, the key goes to `seen.json` so the same fact is not put back by a later catch-up, and the child's manager (`run:`) gets one line saying a letter was given up, through the outbox like any letter. No notice is made for a dropped notice, nor for a letter that was itself addressed to the manager (it would go to the place that just failed); then the log says there is no one else to tell.
+7. The daemon flushes the outbox at the end of every tick, after every delivery, and in `catchup`. While the outbox is not empty the daemon does not idle-stop, and `status` prints `unsent letters: <n>`. `catchup` takes the daemon's lock and touches it every 15 seconds like the daemon, so the two never share `outbox.json`; with a daemon running it exits 1. An `outbox.json` that exists but cannot be read stops the start (logged), because starting empty would overwrite it; one that is not an outbox is copied to `outbox.json.broken-<time>` first.
+8. A letter in the outbox is sent even if its row is later marked done or removed: the fact happened while the row was active.
 
 ## Catch-up at start
 
@@ -318,7 +346,8 @@ The plugin root is two levels up from the kantoku skill's base directory, which 
 | Forwarder exits while running | child process exit | restart after 5 s, 30 s, 2 min; then give up on that repo | manager, one line on give-up |
 | Gave up on a repo | after the third restart fails | catch-up runs for that repo every 10 minutes instead (approach C) | included in the give-up line |
 | Forwarder reconnects | relay `onConnected` (stderr line `Forwarding Webhook events from GitHub...`) | catch-up for that repo | nobody, unless catch-up finds something |
-| `orca orchestration send` fails | non-zero exit | key not stored; retried at the next trigger or catch-up | logged |
+| `orca orchestration send` fails | non-zero exit | the letter stays in `outbox.json`, tried again after 30 s to 5 min; dropped after 24 hours and 10 tries | logged; on a drop, a `DROPPED` log line and one line to the manager |
+| `gh` read fails during catch-up or a CI trigger | non-zero exit | the repo stays queued for catch-up; that PR is read again 30 s, then up to 5 min apart, not every tick; letters already in the outbox are not affected | logged |
 | Daemon dies | stale pid in `status.json` | `status` says not running; the next `start` catches up since `lastAliveAt` | whoever runs `status` |
 | Delivery with a bad signature | HMAC check fails | dropped, logged | nobody |
 
@@ -332,7 +361,7 @@ The receiver binds `127.0.0.1` only, on a free port, and checks `X-Hub-Signature
 node watch/cli.ts start [--allow owner/repo ...]   start the daemon (detached) or report the running one
 node watch/cli.ts stop                             stop it and its forwarders
 node watch/cli.ts status                           running?, repos, last event, troubles
-node watch/cli.ts catchup                          one catch-up pass, no forwarding (needs no webhook rights)
+node watch/cli.ts catchup                          one catch-up pass, no forwarding (needs no webhook rights; refused while the daemon runs)
 node watch/cli.ts run                              the daemon itself, in the foreground (what start launches)
 ```
 
@@ -360,8 +389,9 @@ watch/
  ├─ ci.ts              gh pr checks JSON → CiSummary
  ├─ catchup.ts         gh pr view / checks → WatchEvent[]
  ├─ route.ts           WatchEvent + targets → Letter[] (wording lives here)
+ ├─ outbox.ts          letters not sent yet, on disk; the one place a letter leaves
  ├─ seen.ts            the dedupe store
- ├─ notify.ts          Letter → orca orchestration send
+ ├─ notify.ts          one Letter → orca orchestration send
  ├─ receiver.ts        HTTP server, signature check
  ├─ relay.ts           the Relay type
  ├─ relays/gh-forward.ts  stage 1 relay
@@ -408,6 +438,8 @@ Unit tests, `node --test "watch/**/*.spec.ts"`:
 - `catchup.ts`: known vs first-seen PRs with a fake `gh`; the same review from webhook and catch-up sends once.
 - `receiver.ts`: good signature accepted, bad or missing signature rejected, `/shutdown` needs the secret.
 - `relays/gh-forward.ts`: with a fake runner, `sync` starts and stops the right processes; restart backoff; give-up after three.
+- `outbox.ts`: on disk before the first try, kept across a reopen, settled only on success or a drop, the drop line and the manager notice, no notice for a dropped notice.
+- `faults.spec.ts` (fault injection): 300 seeds. Each seed mixes random events (comment, review, CI, close or merge, restart, reconnect, tick, lost and redelivered webhooks) with random failures (`orca` send, `gh` reads). When the failures stop, every letter that GitHub's facts call for must have been sent exactly once, unless `watch.log` has its `DROPPED` line. `KW_FAULT_SEEDS` changes the number of seeds.
 
 Manual checks (in the plan, on a personal test repo, never an org repo): the end-to-end letter for each event, stop leaving no webhook behind, the daemon outliving the child that started it, and the org-repo refusal.
 
@@ -422,9 +454,11 @@ Manual checks (in the plan, on a personal test repo, never an org repo): the end
 - Its own state.md parser instead of importing `hooks/parse.ts`.
 - Idle stop after 10 minutes with no open watched PR; `stop` is for people.
 - A PR reopened after its close was recorded is not watched again (`pull_request` `reopened` is not handled).
-- A letter that fails to send makes its repo be caught up again at the next tick; a close is recorded only after its letters went out.
+- A letter that fails to send waits in the outbox (see "The outbox"); a close is recorded at once, apart from its letters.
+- Unsent letters keep the daemon from idle-stopping, so a recipient that is gone for good keeps it running until the drop (24 hours, and up to 24 more for the manager's notice when the manager is gone too). That is the price of never dropping a letter silently.
+- The drop limit is 24 hours and at least 10 tries, both. Time alone would drop a letter written just before a long stop without trying it; tries alone would drop it in a few minutes of an Orca outage.
 - One daemon per machine is enforced with `~/.kantoku-watch/daemon.lock`; `start --allow` on a running daemon restarts it, since an approval belongs to one start. The lock holder counts as running by the same rule as `status`: a live pid and either a lock touched in the last 2 minutes or a receiver (found through `status.json`) that answers `POST /ping` with the secret. The daemon touches the lock every 15 seconds on its own timer, apart from the tick, and stops when the lock is no longer its own. Only a successful exclusive create wins, and a stale lock is taken over only by the process that creates `daemon.lock.claim`.
-- A repo queued for catch-up leaves the queue in one place only: the end of a tick in which every read from GitHub for it succeeded and every letter was sent. A failed send, a failed `gh` read during catch-up, and a CI trigger whose checks cannot be read all keep it queued. `gh pr checks` with "no checks reported" is no checks, not a failure.
+- A repo queued for catch-up leaves the queue at the end of a tick in which every read from GitHub for its followed PRs succeeded. A failed `gh` read during catch-up and a CI trigger whose checks cannot be read keep it queued. Sending plays no part: unsent letters are the outbox's. `gh pr checks` with "no checks reported" is no checks, not a failure.
 - "Running" means a live pid and either a heartbeat under 2 minutes old or a receiver that answers `POST /ping` with the secret. `stop` does not look at the heartbeat: for any live pid it asks the receiver to shut down and fails (exit 1) when the pid does not end.
 - Node 22.18+ type stripping instead of a build step.
 

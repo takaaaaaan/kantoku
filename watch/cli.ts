@@ -8,7 +8,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { acquireLock, catchUpOnce, createContext, handleDelivery, heartbeat, isApproved, log, login, readPrs, releaseLock, statusOf, tick, writeJson } from './daemon.ts'
+import { acquireLock, catchUpOnce, createContext, handleDelivery, heartbeat, isApproved, log, login, readPrs, releaseLock, statusOf, tick } from './daemon.ts'
+import { writeJson } from './files.ts'
 import type { Status } from './daemon.ts'
 import type { Trouble } from './events.ts'
 import { startReceiver } from './receiver.ts'
@@ -207,6 +208,7 @@ function printStatus(status: Status, deps: CliDeps) {
   if (repos.length === 0) deps.out('repos: none yet (the first round reads state.md within a few seconds; run status again)')
   for (const [repo, state] of repos) deps.out(`  ${repo}  ${state}`)
   for (const trouble of status.troubles ?? []) deps.out(`trouble: ${trouble}`)
+  if ((status.unsent ?? 0) > 0) deps.out(`unsent letters: ${status.unsent} (kept in outbox.json and tried every round; see watch.log)`)
 }
 
 async function ensureSecret(paths: Paths): Promise<string> {
@@ -331,10 +333,25 @@ async function status(paths: Paths, deps: CliDeps): Promise<number> {
 
 async function catchupOnce(paths: Paths, deps: CliDeps, from: string | undefined): Promise<number> {
   await mkdir(paths.home, { recursive: true })
-  const now = new Date()
-  const ctx = await createContext({ run: deps.run, relay: NO_RELAY, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(), port: 0, now, from })
-  await catchUpOnce(ctx, now)
-  deps.out(`kantoku-watch: catch-up done. See ${join(paths.home, 'watch.log')} for the letters sent`)
+  // The daemon's lock: two processes sharing outbox.json and seen.json would overwrite each other's letters.
+  if (!(await acquireLock(paths.home, process.pid, deps.isAlive))) {
+    deps.out('kantoku-watch: a daemon is running and catches up on its own; catchup is for when it is stopped')
+
+    return 1
+  }
+  // Touch the lock like the daemon does, so a long catchup is not taken for a dead holder.
+  const beat = setInterval(() => void heartbeat(paths.home).catch(() => {}), LOOP_MS)
+  try {
+    const now = new Date()
+    const ctx = await createContext({ run: deps.run, relay: NO_RELAY, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(), port: 0, now, from })
+    await catchUpOnce(ctx, now)
+    const unsent = ctx.outbox.keys().length
+    deps.out(`kantoku-watch: catch-up done. See ${join(paths.home, 'watch.log')} for the letters sent`)
+    if (unsent > 0) deps.out(`unsent letters: ${unsent} (kept in outbox.json; the next start or catchup tries them again)`)
+  } finally {
+    clearInterval(beat)
+    await releaseLock(paths.home, process.pid)
+  }
 
   return 0
 }
@@ -364,7 +381,16 @@ async function runDaemon(paths: Paths, allow: string[], deps: CliDeps, from: str
     onShutdown: stopNow,
   })
   const relay = ghForwardRelay({ spawn: realSpawn, run: deps.run, url: `http://127.0.0.1:${receiver.port}/webhook`, secret })
-  ctx = await createContext({ run: deps.run, relay, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(allow), port: receiver.port, now: new Date(), from })
+  try {
+    ctx = await createContext({ run: deps.run, relay, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(allow), port: receiver.port, now: new Date(), from })
+  } catch (error) {
+    // outbox.json that cannot be read: stop rather than start empty and overwrite unsent letters.
+    await log(paths, `could not open the state files: ${String(error)}; pid ${process.pid} exits`)
+    await receiver.close()
+    await releaseLock(paths.home, process.pid)
+
+    return 1
+  }
   process.on('SIGINT', stopNow)
   process.on('SIGTERM', stopNow)
   await writeJson(join(paths.home, 'status.json'), statusOf(ctx, new Date()))

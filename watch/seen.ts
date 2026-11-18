@@ -1,7 +1,8 @@
 // Remembers every letter sent and every delivery handled, so each fact is sent once.
 // The file is `{ [key]: isoTime }`. A missing or broken file starts empty.
 
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
+import { writeJson } from './files.ts'
 
 export type Seen = {
   has(key: string): boolean
@@ -33,9 +34,7 @@ export async function openSeen(path: string): Promise<Seen> {
       }
     },
     save: async () => {
-      const temp = `${path}.${process.pid}.tmp`
-      await writeFile(temp, JSON.stringify(Object.fromEntries(keys), null, 1))
-      await rename(temp, path)
+      await writeJson(path, Object.fromEntries(keys))
     },
   }
 }

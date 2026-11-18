@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { acquireLock, createContext, handleDelivery, heartbeat, tick } from './daemon.ts'
+import type { PrRecord } from './daemon.ts'
 import { startReceiver } from './receiver.ts'
 import type { Relay } from './relay.ts'
 import type { Trouble } from './events.ts'
@@ -272,14 +273,148 @@ test('a letter that failed is retried by a catch-up at the next tick', async () 
   assert.deepEqual(sent(run), ['dispatch:ctx_1', 'run:run_1', 'dispatch:ctx_1', 'run:run_1'])
 })
 
-test('a closed letter that failed keeps the PR open until it is sent', async () => {
+test('a close is recorded at once; its letters that failed wait in the outbox and go out later', async () => {
   const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
   const run = flaky({ orca: 4 }, 'CLOSED')
   const ctx = await createContext({ ...(await s.make()).options, run })
   await tick(ctx, at(0))
-  assert.equal(ctx.prs['me-login/app#1']?.closedAt, undefined)
-  await tick(ctx, at(1))
   assert.equal(typeof ctx.prs['me-login/app#1']?.closedAt, 'string')
+  assert.equal(ctx.outbox.keys().length, 4)
+  await tick(ctx, at(1))
+  assert.deepEqual(ctx.outbox.keys(), [])
+  assert.deepEqual(sent(run).slice(4), ['dispatch:ctx_1', 'run:run_1', 'dispatch:ctx_1', 'run:run_1'])
+})
+
+// Verifier run 3 (cf57829): a comment fails, then only the close goes out. The comment must still go out.
+function closeAfterComment() {
+  const gh = { state: 'OPEN', commentFails: true }
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return gh.commentFails && args.some(a => a.includes('comment by')) ? { code: 1, stderr: 'orca down' } : {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') return json({ state: gh.state, headRefOid: head, mergedBy: null })
+    if (args[0] === 'pr' && args[1] === 'checks') return json([])
+    if (args[0] === 'api' && args[1]?.endsWith('/comments'))
+      return json([[{ id: 77, user: { login: 'x', type: 'User' }, body: 'hi', html_url: 'u', created_at: at(0.5).toISOString() }]])
+
+    return json([[]])
+  })
+
+  return { gh, run }
+}
+const commentKey = 'comment:me-login/app#1:77>child:ctx_1'
+
+for (const via of ['catch-up', 'webhook'] as const)
+  test(`a comment that failed is sent after the PR closes, whatever path brought the close (${via})`, async () => {
+    const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+    const { gh, run } = closeAfterComment()
+    const ctx = await createContext({ ...(await s.make()).options, run })
+    await tick(ctx, at(0))
+    await handleDelivery(ctx, 'issue_comment', 'd-1', commentPayload, at(1))
+    gh.state = 'CLOSED'
+    if (via === 'webhook') await handleDelivery(ctx, 'pull_request', 'd-2', { action: 'closed', pull_request: { number: 1, merged: false }, repository: { full_name: 'me-login/app' } }, at(1.2))
+    else ctx.toCatchUp.add('me-login/app')
+    await tick(ctx, at(1.25))
+    assert.equal(typeof ctx.prs['me-login/app#1']?.closedAt, 'string')
+    assert.equal(ctx.seen.has('closed:me-login/app#1:closed>child:ctx_1'), true)
+    assert.deepEqual(ctx.outbox.keys(), [commentKey])
+
+    // A restart in between: the outbox is on disk.
+    const again = await createContext({ ...ctx.options, now: at(1.4) })
+    gh.commentFails = false
+    const commentSends = () => run.calls.filter(c => c[0] === 'orca' && c.some(a => a.includes('comment by'))).length
+    const before = commentSends()
+    await tick(again, at(1.5))
+    await tick(again, at(2))
+    assert.equal(again.seen.has(commentKey), true)
+    assert.deepEqual(again.outbox.keys(), [])
+    assert.equal(commentSends() - before, 1, 'sent exactly once after the recovery')
+  })
+
+test('a comment whose webhook was lost before the close is found by the last read of the closed PR', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const { gh, run } = closeAfterComment()
+  gh.commentFails = false
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  gh.state = 'CLOSED'
+  await handleDelivery(ctx, 'pull_request', 'd-2', { action: 'closed', pull_request: { number: 1, merged: false }, repository: { full_name: 'me-login/app' } }, at(1))
+  assert.equal(ctx.prs['me-login/app#1']?.finalReadAt, undefined)
+  await tick(ctx, at(1.25))
+  assert.equal(ctx.seen.has(commentKey), true)
+  assert.equal(typeof ctx.prs['me-login/app#1']?.finalReadAt, 'string')
+  const views = prViews(run.calls)
+  await tick(ctx, at(2))
+  assert.equal(prViews(run.calls), views, 'after the last read the closed PR is no longer read')
+})
+
+test('a close webhook for a PR whose first read failed leaves the full first read to catch-up', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const gh = { view: 1, state: 'OPEN' }
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') return gh.view-- > 0 ? { code: 1, stderr: 'HTTP 502' } : json({ state: gh.state, headRefOid: head, mergedBy: { login: 'x' } })
+    if (args[0] === 'pr' && args[1] === 'checks') return json([])
+    if (args[1]?.endsWith('/reviews'))
+      return json([[{ id: 9, state: 'APPROVED', user: { login: 'rev' }, body: '', html_url: 'u', submitted_at: at(-5).toISOString() }]])
+
+    return json([[]])
+  })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  const prs: Record<string, PrRecord> = ctx.prs
+  await tick(ctx, at(0))
+  assert.equal(prs['me-login/app#1'], undefined)
+  gh.state = 'MERGED'
+  await handleDelivery(ctx, 'pull_request', 'd-1', { action: 'closed', pull_request: { number: 1, merged: true, merged_by: { login: 'x' } }, repository: { full_name: 'me-login/app' } }, at(1))
+  const record = () => ctx.prs['me-login/app#1']
+  assert.equal(record()?.firstSeenAt, undefined, 'the first full read is still to come')
+  assert.equal(typeof record()?.closedAt, 'string', 'the close itself is recorded')
+  gh.state = 'OPEN' // GitHub's view lags behind the webhook
+  await tick(ctx, at(2))
+  assert.equal(ctx.seen.has('review:me-login/app#1:9>child:ctx_1'), true, 'the approval from before the close is sent')
+  assert.equal(typeof record()?.finalReadAt, 'string')
+  assert.equal(typeof record()?.closedAt, 'string', 'a lagging OPEN does not undo the close')
+})
+
+test('a PR whose read keeps failing is read again 30 s, 1 min, ... apart, not every tick', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const run = flaky({ orca: 0, view: 1000 })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  for (let i = 0; i < 8; i++) await tick(ctx, new Date(at(0).getTime() + i * 15_000))
+  // 0 s (fail 1), 30 s (fail 2), 90 s (fail 3): three reads in 105 seconds.
+  assert.equal(prViews(run.calls), 3)
+})
+
+test('a quiet first read of a done row does not mark a letter already waiting in the outbox as sent', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | done | — |'])
+  const gh = { view: 1, orca: 1 }
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return gh.orca-- > 0 ? { code: 1, stderr: 'orca down' } : {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') return gh.view-- > 0 ? { code: 1, stderr: 'HTTP 502' } : json({ state: 'MERGED', headRefOid: head, mergedBy: { login: 'x' } })
+    if (args[0] === 'pr' && args[1] === 'checks') return json([])
+
+    return json([[]])
+  })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  await handleDelivery(ctx, 'pull_request', 'd-1', { action: 'closed', pull_request: { number: 1, merged: true, merged_by: { login: 'x' } }, repository: { full_name: 'me-login/app' } }, at(1))
+  assert.deepEqual(ctx.outbox.keys(), ['closed:me-login/app#1:merged>run:run_1'])
+  await tick(ctx, at(2))
+  assert.equal(ctx.seen.has('closed:me-login/app#1:merged>run:run_1'), true)
+  assert.equal(run.calls.filter(c => c[0] === 'orca').length, 2, 'one failure, then really sent')
+})
+
+test('a letter that cannot be sent for a day is dropped with a DROPPED log line, and the daemon stays up until then', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const run = flaky({ orca: Number.POSITIVE_INFINITY }, 'CLOSED')
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  for (let minute = 0; minute <= 60; minute += 15) assert.equal(await tick(ctx, at(minute)), 'continue', 'unsent letters keep it alive')
+  for (let i = 0; i < 10; i++) await tick(ctx, at(24 * 60 + i * 6))
+  const log = readFileSync(join(s.home, 'watch.log'), 'utf8')
+  assert.match(log, /DROPPED closed:me-login\/app#1:closed>child:ctx_1 /)
+  assert.ok(ctx.outbox.keys().every(key => key.startsWith('dropped:')), ctx.outbox.keys().join(' '))
+  assert.ok(ctx.outbox.keys().includes('dropped:closed:me-login/app#1:closed>child:ctx_1'))
 })
 
 test('a first-seen PR that gh could not read is tried again', async () => {
@@ -412,16 +547,17 @@ function outage() {
 }
 const commentPayload = { action: 'created', issue: { number: 1, pull_request: {} }, comment: { id: 77, body: 'hi', html_url: 'u', user: { login: 'x', type: 'User' } }, repository: { full_name: 'me-login/app' } }
 
-test('a failed letter whose retry cannot read GitHub stays queued until it is sent', async () => {
+test('a failed letter waits in the outbox and is sent even while GitHub cannot be read', async () => {
   const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
   const { down, run } = outage()
   const ctx = await createContext({ ...(await s.make()).options, run })
   await tick(ctx, at(0))
-  down.orca = 1
+  down.orca = 2
   await handleDelivery(ctx, 'issue_comment', 'd-1', commentPayload, at(1))
-  down.view = 1
+  down.view = 2
   await tick(ctx, at(2))
   assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), false)
+  assert.deepEqual(ctx.outbox.keys(), ['comment:me-login/app#1:77>child:ctx_1'])
   await tick(ctx, at(3))
   assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), true)
 })

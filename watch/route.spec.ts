@@ -27,6 +27,7 @@ test('CI failed: child letter and manager line', () => {
       'PR: https://github.com/owner/repo/pull/12',
     ].join('\n'),
     key: 'ci:owner/repo#12@1a2b3c4d5e6f7a8b:failed:lint,test-windows>child:ctx_9f1',
+    manager: 'run:run_1',
     fallbackFrom: 'term_m',
   })
   assert.deepEqual(manager, {

@@ -5,10 +5,13 @@
 
 import { appendFile, readFile, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { writeJson } from './files.ts'
 import { catchUp, ciEvent } from './catchup.ts'
 import { parseWebhook } from './events.ts'
 import type { Trouble, WatchEvent } from './events.ts'
-import { sendLetters } from './notify.ts'
+import { sendLetter } from './notify.ts'
+import { openOutbox, retryWaitMs } from './outbox.ts'
+import type { Outbox } from './outbox.ts'
 import type { Relay } from './relay.ts'
 import { lettersFor } from './route.ts'
 import type { Run } from './run.ts'
@@ -26,9 +29,21 @@ export type Status = {
   lastAliveAt: string
   repos: Record<string, RepoState>
   troubles: string[]
+  // Letters in the outbox, not sent yet.
+  unsent?: number
 }
 
-type PrRecord = { firstSeenAt: string; closedAt?: string }
+// What kantoku-watch knows about a PR. It says nothing about letters: those live in the outbox.
+// firstSeenAt: its first full read from GitHub succeeded (missing only when a close
+// webhook came first). closedAt: a close was seen. finalReadAt: a catch-up read the
+// closed PR once more, so facts whose webhooks were lost before the close are in the
+// outbox too. Only then does the PR stop being followed.
+export type PrRecord = { firstSeenAt?: string; closedAt?: string; finalReadAt?: string }
+
+// The one rule for "this PR must be read from GitHub at the next tick, whatever else happened".
+export function needsRead(record: PrRecord | undefined): boolean {
+  return record?.firstSeenAt === undefined || (record.closedAt !== undefined && record.finalReadAt === undefined)
+}
 
 export type ContextOptions = {
   run: Run
@@ -47,6 +62,7 @@ export type DaemonContext = {
   run: Run
   relay: Relay
   seen: Seen
+  outbox: Outbox
   stateRoot: string
   home: string
   allow: Set<string>
@@ -58,9 +74,12 @@ export type DaemonContext = {
   targets: WatchTarget[]
   lastOpenAt: Date
   lastPollAt: Map<string, number>
-  // Repos to catch up. A repo leaves this set in one place only: the end of a tick whose catch-up for it read GitHub and sent every letter.
+  // Repos to read from GitHub again (a reconnect, or a read that failed). A repo leaves
+  // this set at the end of a tick whose catch-up read every followed PR in it. Sending is
+  // not its business: unsent letters wait in the outbox.
   toCatchUp: Set<string>
-  incomplete: Set<string>
+  // PRs whose last reads failed: how many in a row, and when the last one was.
+  readFailures: Map<string, { count: number; at: number }>
   relayTroubles: Map<string, Trouble>
   newTroubles: { repo: string; problem: Trouble }[]
   emptyOnce: boolean
@@ -76,11 +95,13 @@ const KEEP_MS = 14 * 24 * 60 * 60_000
 export async function createContext(options: ContextOptions): Promise<DaemonContext> {
   const { run, relay, stateRoot, home, now } = options
   const me = await login(run)
+  const seen = await openSeen(join(home, 'seen.json'))
   const ctx: DaemonContext = {
     options,
     run,
     relay,
-    seen: await openSeen(join(home, 'seen.json')),
+    seen,
+    outbox: await openOutbox(join(home, 'outbox.json'), seen),
     stateRoot,
     home,
     allow: new Set([...options.allow].map(repo => repo.toLowerCase())),
@@ -93,7 +114,7 @@ export async function createContext(options: ContextOptions): Promise<DaemonCont
     lastOpenAt: now,
     lastPollAt: new Map(),
     toCatchUp: new Set(),
-    incomplete: new Set(),
+    readFailures: new Map(),
     relayTroubles: new Map(),
     newTroubles: [],
     emptyOnce: false,
@@ -140,7 +161,6 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
     await readTargets(ctx)
     const open = openPrs(ctx)
     const toCatchUp = new Set(ctx.toCatchUp)
-    ctx.incomplete.clear()
 
     const repos = [...new Set(open.map(pr => pr.repo))].sort()
     const forwarded: string[] = []
@@ -165,28 +185,41 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
       await report(ctx, { kind: 'trouble', repo, problem }, now)
     }
 
-    for (const pr of open) {
+    const unread = new Set<string>()
+    for (const pr of followedPrs(ctx)) {
       const key = prKey(pr)
       const due = ctx.repos[pr.repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(pr.repo) ?? 0) >= POLL_MS
-      if (ctx.prs[key] === undefined) await catchUpPr(ctx, pr, false, now)
-      else if (toCatchUp.has(pr.repo) || due) await catchUpPr(ctx, pr, true, now)
+      if (!(needsRead(ctx.prs[key]) || toCatchUp.has(pr.repo) || due)) continue
+      // A PR whose read keeps failing (a deleted repo, an outage) is tried 30 s, 1 min, ... at most 5 min apart, not every tick.
+      const failed = ctx.readFailures.get(key)
+      if (failed !== undefined && now.getTime() - failed.at < retryWaitMs(failed.count)) {
+        unread.add(pr.repo)
+        continue
+      }
+      if (await catchUpPr(ctx, pr, now)) ctx.readFailures.delete(key)
+      else {
+        ctx.readFailures.set(key, { count: (failed?.count ?? 0) + 1, at: now.getTime() })
+        unread.add(pr.repo)
+      }
     }
-    for (const repo of toCatchUp) if (!ctx.incomplete.has(repo)) ctx.toCatchUp.delete(repo)
+    for (const repo of toCatchUp) if (!unread.has(repo)) ctx.toCatchUp.delete(repo)
     for (const repo of repos) {
       if (ctx.repos[repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(repo) ?? 0) >= POLL_MS) ctx.lastPollAt.set(repo, now.getTime())
     }
+    await flush(ctx, now)
 
     // Only PRs it can follow keep it alive: a repo waiting for approval or without admin rights never reports a close.
+    // Letters still in the outbox keep it alive too, until they are sent or dropped.
     const stillOpen = openPrs(ctx).some(pr => ctx.repos[pr.repo] === 'forwarding' || ctx.repos[pr.repo] === 'polling')
-    if (stillOpen) ctx.lastOpenAt = now
+    if (stillOpen || ctx.outbox.keys().length > 0) ctx.lastOpenAt = now
     const watched = new Set(ctx.targets.map(t => prKey(t.pr)))
     ctx.seen.prune(watched, now)
     for (const [key, record] of Object.entries(ctx.prs))
-      if (!watched.has(key) && now.getTime() - Date.parse(record.closedAt ?? record.firstSeenAt) > KEEP_MS) delete ctx.prs[key]
+      if (!watched.has(key) && now.getTime() - Date.parse(record.closedAt ?? record.firstSeenAt ?? now.toISOString()) > KEEP_MS) delete ctx.prs[key]
     await saveAll(ctx, now)
-    if (!stillOpen && now.getTime() - ctx.lastOpenAt.getTime() >= IDLE_MS) {
+    if (now.getTime() - ctx.lastOpenAt.getTime() >= IDLE_MS) {
       await ctx.relay.sync([])
-      await log(ctx, 'idle stop: no open watched PR for 10 minutes')
+      await log(ctx, 'idle stop: no open watched PR and no unsent letter for 10 minutes')
 
       return 'idle-stop'
     }
@@ -203,24 +236,31 @@ export function handleDelivery(ctx: DaemonContext, eventName: string, deliveryId
     if (event?.kind === 'ci-trigger') {
       for (const pr of openPrs(ctx).filter(pr => pr.repo === event.repo)) {
         const ci = await ciEvent(ctx.run, pr, event.headSha)
-        if (ci === undefined) incomplete(ctx, pr.repo)
+        if (ci === undefined) ctx.toCatchUp.add(pr.repo)
         else if (ci !== 'pending') await report(ctx, ci, now)
       }
     } else if (event !== undefined) await report(ctx, event, now)
+    // The letters are in the outbox on disk before the delivery is marked handled.
+    await savePrs(ctx)
     if (deliveryId !== '') ctx.seen.add(deliveryKey, now)
     await ctx.seen.save()
-    await savePrs(ctx)
+    await flush(ctx, now)
   })
 }
 
-function openPrs(ctx: DaemonContext): PrRef[] {
-  const open = new Map<string, PrRef>()
+// PRs kantoku-watch still reads from GitHub: open ones, and closed ones not yet read once after the close.
+function followedPrs(ctx: DaemonContext): PrRef[] {
+  const followed = new Map<string, PrRef>()
   for (const target of ctx.targets) {
-    const key = prKey(target.pr)
-    if (ctx.prs[key]?.closedAt === undefined) open.set(key, target.pr)
+    const record = ctx.prs[prKey(target.pr)]
+    if (record?.closedAt === undefined || needsRead(record)) followed.set(prKey(target.pr), target.pr)
   }
 
-  return [...open.values()]
+  return [...followed.values()]
+}
+
+function openPrs(ctx: DaemonContext): PrRef[] {
+  return followedPrs(ctx).filter(pr => ctx.prs[prKey(pr)]?.closedAt === undefined)
 }
 
 // A manager rewriting state.md can be read half-written. One empty read keeps
@@ -236,60 +276,60 @@ async function readTargets(ctx: DaemonContext) {
   ctx.targets = targets
 }
 
-async function catchUpPr(ctx: DaemonContext, pr: PrRef, known: boolean, now: Date) {
+// Reads one PR from GitHub and puts what it finds in the outbox. False when GitHub could not be read.
+async function catchUpPr(ctx: DaemonContext, pr: PrRef, now: Date): Promise<boolean> {
   const key = prKey(pr)
-  const record = ctx.prs[key]
-  const events = await catchUp(ctx.run, pr, known, record === undefined ? undefined : new Date(record.firstSeenAt))
+  const firstSeenAt = ctx.prs[key]?.firstSeenAt
+  const events = await catchUp(ctx.run, pr, firstSeenAt !== undefined, firstSeenAt === undefined ? undefined : new Date(firstSeenAt))
   if (events === undefined) {
-    await log(ctx, `could not read ${key} from GitHub; tried again at the next tick`)
+    await log(ctx, `could not read ${key} from GitHub; tried again later`)
 
-    return incomplete(ctx, pr.repo)
+    return false
   }
   // A PR first seen in rows that are all done is old news: record it without letters.
-  const quiet = !known && ctx.targets.filter(t => prKey(t.pr) === key).every(t => t.rowDone)
-  let allSent = true
-  for (const event of events) allSent = (await report(ctx, event, now, quiet)) && allSent
-  // A first-seen PR is recorded once its letters went out; until then the next tick tries the first-seen pass again.
-  if (allSent && ctx.prs[key] === undefined) ctx.prs[key] = { firstSeenAt: now.toISOString() }
+  const quiet = firstSeenAt === undefined && ctx.targets.filter(t => prKey(t.pr) === key).every(t => t.rowDone)
+  for (const event of events) await report(ctx, event, now, quiet)
+  // A successful read of a closed PR is its last one: its comments and reviews are now in
+  // the outbox. That holds even when GitHub still says OPEN (its view can lag behind the
+  // webhook); a reopened PR is not followed again, as before.
+  const current = ctx.prs[key]
+  const closedAt = current?.closedAt ?? (events.some(event => event.kind === 'closed') ? now.toISOString() : undefined)
+  const read: PrRecord = { firstSeenAt: firstSeenAt ?? now.toISOString() }
+  ctx.prs[key] = closedAt === undefined ? read : { ...read, closedAt, finalReadAt: now.toISOString() }
+
+  return true
 }
 
-// Returns false when a letter could not be sent. Then the PR's repo is caught up
-// again at the next tick, and a close is recorded only once its letters went out.
-async function report(ctx: DaemonContext, event: WatchEvent, now: Date, quiet = false): Promise<boolean> {
+// Turns an event into letters and puts them in the outbox (on disk). A close also
+// changes the PR's state; it never touches the outbox. Sending is flush's job.
+async function report(ctx: DaemonContext, event: WatchEvent, now: Date, quiet = false) {
   const letters = lettersFor(event, ctx.targets, now)
-  let ok = true
-  if (quiet) for (const letter of letters) ctx.seen.add(letter.key, now)
-  else {
-    const fresh = letters.filter(letter => !ctx.seen.has(letter.key))
-    if (fresh.length > 0) {
-      const result = await sendLetters(ctx.run, fresh, ctx.seen, now, ctx.options.from)
-      for (const letter of fresh) await log(ctx, `${ctx.seen.has(letter.key) ? 'sent' : 'FAILED'} ${letter.to} ${letter.subject}`)
-      ok = result.failed === 0
-      if (!ok) await log(ctx, `${result.failed} letter(s) not sent; tried again at the next tick`)
-    }
+  // Quiet (old news) marks facts as known without letters, but never a letter a webhook already put in the outbox.
+  if (quiet) for (const letter of letters) {
+    if (ctx.outbox.entry(letter.key) === undefined) ctx.seen.add(letter.key, now)
   }
-  if (!ok && 'pr' in event) incomplete(ctx, event.pr.repo)
-  if (ok && event.kind === 'closed' && ctx.targets.some(t => prKey(t.pr) === prKey(event.pr))) {
+  else await ctx.outbox.put(letters, now)
+  // A close is recorded at once. For a PR not read yet it is recorded without firstSeenAt,
+  // so its first catch-up is still the full first-seen read of everything before the close.
+  if (event.kind === 'closed' && ctx.targets.some(t => prKey(t.pr) === prKey(event.pr))) {
     const key = prKey(event.pr)
-    ctx.prs[key] = { firstSeenAt: ctx.prs[key]?.firstSeenAt ?? now.toISOString(), closedAt: now.toISOString() }
+    if (ctx.prs[key]?.closedAt === undefined) ctx.prs[key] = { ...ctx.prs[key], closedAt: now.toISOString() }
   }
-
-  return ok
 }
 
-// Something about this repo was not read or not sent: keep it queued for the next tick.
-function incomplete(ctx: DaemonContext, repo: string) {
-  ctx.toCatchUp.add(repo)
-  ctx.incomplete.add(repo)
+// Tries the letters in the outbox that are due. outbox.ts decides what leaves it.
+async function flush(ctx: DaemonContext, now: Date) {
+  await ctx.outbox.flush(letter => sendLetter(ctx.run, letter, ctx.options.from), now, line => log(ctx, line))
 }
 
-// One catch-up pass over every open PR, without forwarding (the `catchup` command).
+// One catch-up pass over every followed PR, without forwarding (the `catchup` command).
 export async function catchUpOnce(ctx: DaemonContext, now: Date): Promise<void> {
   await serial(ctx, async () => {
     await readTargets(ctx)
-    for (const pr of openPrs(ctx)) await catchUpPr(ctx, pr, ctx.prs[prKey(pr)] !== undefined, now)
+    for (const pr of followedPrs(ctx)) await catchUpPr(ctx, pr, now)
     await ctx.seen.save()
     await savePrs(ctx)
+    await flush(ctx, now)
   })
 }
 
@@ -402,6 +442,7 @@ export function statusOf(ctx: DaemonContext, now: Date): Status {
     lastAliveAt: now.toISOString(),
     repos: ctx.repos,
     troubles: ctx.troubles,
+    unsent: ctx.outbox.keys().length,
   }
 }
 
@@ -415,12 +456,6 @@ async function savePrs(ctx: DaemonContext) {
   await writeJson(join(ctx.home, 'prs.json'), ctx.prs)
 }
 
-export async function writeJson(path: string, value: unknown) {
-  // The heartbeat timer and a tick can write status.json at the same time, so each write has its own temp file.
-  const temp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
-  await writeFile(temp, JSON.stringify(value, null, 1))
-  await rename(temp, path)
-}
 
 export async function readPrs(path: string): Promise<Record<string, PrRecord>> {
   try {
@@ -428,8 +463,12 @@ export async function readPrs(path: string): Promise<Record<string, PrRecord>> {
     if (typeof data !== 'object' || data === null || Array.isArray(data)) return {}
     const prs: Record<string, PrRecord> = {}
     for (const [key, value] of Object.entries(data))
-      if (typeof value?.firstSeenAt === 'string')
-        prs[key] = typeof value.closedAt === 'string' ? { firstSeenAt: value.firstSeenAt, closedAt: value.closedAt } : { firstSeenAt: value.firstSeenAt }
+      if (typeof value?.firstSeenAt === 'string' || typeof value?.closedAt === 'string')
+        prs[key] = {
+          ...(typeof value.firstSeenAt === 'string' ? { firstSeenAt: value.firstSeenAt } : {}),
+          ...(typeof value.closedAt === 'string' ? { closedAt: value.closedAt } : {}),
+          ...(typeof value.finalReadAt === 'string' ? { finalReadAt: value.finalReadAt } : {}),
+        }
 
     return prs
   } catch {

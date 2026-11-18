@@ -75,6 +75,14 @@ test('status with no file says not running and exits 0', async () => {
   assert.match(s.out.join('\n'), /not running/)
 })
 
+test('status shows how many letters wait in the outbox', async () => {
+  const s = setup()
+  mkdirSync(s.home, { recursive: true })
+  writeFileSync(join(s.home, 'status.json'), JSON.stringify({ pid: process.pid, port: 5555, startedAt: 's', lastAliveAt: new Date().toISOString(), repos: {}, troubles: [], unsent: 2 }))
+  assert.equal(await main(['status'], s.env, s.deps), 0)
+  assert.match(s.out.join('\n'), /unsent letters: 2 /)
+})
+
 test('start with a live daemon reports it and does not spawn', async () => {
   const s = setup()
   s.writeStatus(process.pid)
@@ -203,6 +211,16 @@ test('catchup runs one pass like the daemon: letters sent, PRs recorded', async 
   assert.equal(await main(['catchup'], s.env, { ...s.deps, run }), 0)
   assert.equal(run.calls.filter(c => c[0] === 'orca').length, 4)
   assert.equal(typeof JSON.parse(readFileSync(join(s.home, 'prs.json'), 'utf8'))['me-login/app#1'].closedAt, 'string')
+  assert.equal(existsSync(join(s.home, 'daemon.lock')), false, 'the lock is released')
+})
+
+test('catchup refuses while a daemon holds the lock, so the two never share the outbox', async () => {
+  const s = setup({ rows: ['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'] })
+  mkdirSync(s.home, { recursive: true })
+  writeFileSync(join(s.home, 'daemon.lock'), '4343')
+  assert.equal(await main(['catchup'], s.env, { ...s.deps, isAlive: pid => pid === 4343 }), 1)
+  assert.match(s.out.join('\n'), /a daemon is running/)
+  assert.equal(existsSync(join(s.home, 'outbox.json')), false)
 })
 
 const stale = () => new Date(Date.now() - 3 * 60_000).toISOString()
