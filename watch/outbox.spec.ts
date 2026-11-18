@@ -203,3 +203,55 @@ test('when the manager line gives up too, each DROPPED line is written once even
   assert.equal(lines.filter(l => l.startsWith(`DROPPED ${child.key} `)).length, 1, lines.join(' | '))
   assert.equal(lines.filter(l => l.startsWith(`DROPPED dropped:${child.key} `)).length, 1, lines.join(' | '))
 })
+
+// Verifier run 5 (0b61a15): after a failed write, putting the same letter again returned as if it were on disk.
+test('after a failed write, put keeps failing until outbox.json is really written', async () => {
+  const home = dir()
+  const seen = await openSeen(join(home, 'seen.json'))
+  let broken = true
+  const write = async (path: string, value: unknown) => {
+    if (broken) throw new Error('EPERM: rename outbox.json')
+    writeFileSync(path, JSON.stringify(value))
+  }
+  const outbox = await openOutbox(join(home, 'outbox.json'), seen, write)
+  await assert.rejects(outbox.put([child], t0))
+  await assert.rejects(outbox.put([child], t0), 'the same letter again: still not on disk, so still a failure')
+  broken = false
+  await outbox.put([child], t0)
+  const again = await open(home)
+  assert.deepEqual(again.outbox.keys(), [child.key], 'on disk once put resolves')
+})
+
+test('a key in seen.json that was not saved yet does not settle a letter until seen.json is written', async () => {
+  const home = dir()
+  const seen = await openSeen(join(home, 'seen.json'))
+  const outbox = await openOutbox(join(home, 'outbox.json'), seen)
+  await outbox.put([child], t0)
+  let seenWrites = 0
+  const realSave = seen.save
+  seen.save = async () => {
+    if (seenWrites++ === 0) throw new Error('EPERM: rename seen.json')
+    await realSave()
+  }
+  await assert.rejects(outbox.flush(async () => true, t0, quiet), 'sent, but seen.json could not be written')
+  assert.equal(seen.unsaved(), true)
+  await outbox.flush(async () => true, later(MIN), quiet)
+  assert.deepEqual(outbox.keys(), [])
+  const again = await open(home)
+  assert.equal(again.seen.has(child.key), true, 'settled only once the key was on disk')
+})
+
+test('while a write failed, a put with nothing new or only sent letters does not throw', async () => {
+  const home = dir()
+  const seen = await openSeen(join(home, 'seen.json'))
+  let broken = true
+  const outbox = await openOutbox(join(home, 'outbox.json'), seen, async (path, value) => {
+    if (broken) throw new Error('EPERM')
+    writeFileSync(path, JSON.stringify(value))
+  })
+  await assert.rejects(outbox.put([child], t0))
+  seen.add(manager.key, t0)
+  await outbox.put([], t0)
+  await outbox.put([manager], t0)
+  broken = false
+})

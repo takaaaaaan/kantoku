@@ -233,13 +233,19 @@ export function handleDelivery(ctx: DaemonContext, eventName: string, deliveryId
     const deliveryKey = `delivery:${deliveryId}`
     if (deliveryId !== '' && ctx.seen.has(deliveryKey)) return
     const event = parseWebhook(eventName, payload)
-    if (event?.kind === 'ci-trigger') {
-      for (const pr of openPrs(ctx).filter(pr => pr.repo === event.repo)) {
-        const ci = await ciEvent(ctx.run, pr, event.headSha)
-        if (ci === undefined) ctx.toCatchUp.add(pr.repo)
-        else if (ci !== 'pending') await report(ctx, ci, now)
-      }
-    } else if (event !== undefined) await report(ctx, event, now)
+    try {
+      if (event?.kind === 'ci-trigger') {
+        for (const pr of openPrs(ctx).filter(pr => pr.repo === event.repo)) {
+          const ci = await ciEvent(ctx.run, pr, event.headSha)
+          if (ci === undefined) ctx.toCatchUp.add(pr.repo)
+          else if (ci !== 'pending') await report(ctx, ci, now)
+        }
+      } else if (event !== undefined) await report(ctx, event, now)
+    } catch (error) {
+      // outbox.json could not be written: the delivery stays unhandled, and a catch-up reads the repo again.
+      if (event !== undefined) ctx.toCatchUp.add('repo' in event ? event.repo : event.pr.repo)
+      throw error
+    }
     // The letters are in the outbox on disk before the delivery is marked handled.
     await savePrs(ctx)
     if (deliveryId !== '') ctx.seen.add(deliveryKey, now)

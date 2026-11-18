@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { acquireLock, createContext, handleDelivery, heartbeat, tick } from './daemon.ts'
@@ -597,4 +597,21 @@ test('an old lock whose holder receiver answers the ping is kept, found through 
   } finally {
     await receiver.close()
   }
+})
+
+// Verifier run 5 (0b61a15): a delivery whose letter could not be written to outbox.json must not be marked handled.
+test('a delivery is marked handled only after its letters are written to outbox.json', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const ctx = await s.make()
+  await tick(ctx, at(0))
+  const file = join(s.home, 'outbox.json')
+  rmSync(file, { force: true })
+  mkdirSync(file) // a directory where the file goes: every write of outbox.json fails
+  await assert.rejects(handleDelivery(ctx, 'issue_comment', 'd-1', commentPayload, at(1)))
+  await assert.rejects(handleDelivery(ctx, 'issue_comment', 'd-1', commentPayload, at(1.1)), 'a redelivery still cannot write it')
+  assert.equal(ctx.seen.has('delivery:d-1'), false)
+  rmSync(file, { recursive: true, force: true })
+  await handleDelivery(ctx, 'issue_comment', 'd-1', commentPayload, at(2))
+  assert.equal(ctx.seen.has('delivery:d-1'), true)
+  assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), true)
 })

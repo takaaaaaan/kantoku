@@ -56,7 +56,8 @@ async function written(log: LogLine, line: string): Promise<boolean> {
   }
 }
 
-export async function openOutbox(path: string, seen: Seen): Promise<Outbox> {
+// write: how outbox.json is written; tests pass one that fails.
+export async function openOutbox(path: string, seen: Seen, write: (path: string, value: unknown) => Promise<void> = writeJson): Promise<Outbox> {
   const entries = new Map<string, Entry>()
   let text: string | undefined
   try {
@@ -80,16 +81,28 @@ export async function openOutbox(path: string, seen: Seen): Promise<Outbox> {
     else await copyFile(path, `${path}.broken-${Date.now()}`)
   }
 
-  const save = () => writeJson(path, Object.fromEntries(entries))
+  // dirty: memory has changes outbox.json may not have. Every change sets it; only a successful
+  // write clears it. While it is set, a flush writes again, and a put of a letter already waiting
+  // writes again too, so a put never returns as if its letter were on disk when it is not.
+  let dirty = false
+  const save = async () => {
+    dirty = true
+    await write(path, Object.fromEntries(entries))
+    dirty = false
+  }
   const tooSoon = (entry: Entry, now: Date) => entry.lastTriedAt !== undefined && now.getTime() - Date.parse(entry.lastTriedAt) < retryWaitMs(entry.attempts)
   const givesUp = (entry: Entry, now: Date) => entry.attempts >= GIVE_UP_ATTEMPTS && now.getTime() - Date.parse(entry.createdAt) >= GIVE_UP_MS
   const failedTry = (entry: Entry, now: Date) => {
+    dirty = true
     entry.attempts++
     entry.lastTriedAt = now.toISOString()
   }
 
   // The one place an entry leaves the outbox.
-  const settle = (key: string) => entries.delete(key)
+  const settle = (key: string) => {
+    dirty = true
+    entries.delete(key)
+  }
 
   // A letter given up becomes a drop entry, in the same write that removes it.
   const startDrop = async (entry: Entry, now: Date, log: LogLine) => {
@@ -153,7 +166,9 @@ export async function openOutbox(path: string, seen: Seen): Promise<Outbox> {
     put: async (letters, now) => {
       const fresh = letters.filter(letter => !entries.has(letter.key) && !entries.has(`${DROPPED}${letter.key}`) && !seen.has(letter.key))
       for (const letter of fresh) entries.set(letter.key, { letter, createdAt: now.toISOString(), attempts: 0 })
-      if (fresh.length > 0) await save()
+      // A letter already waiting while the last write failed is not on disk yet: write again, and fail if that fails too.
+      const unwritten = dirty && letters.some(letter => entries.has(letter.key) || entries.has(`${DROPPED}${letter.key}`))
+      if (fresh.length > 0 || unwritten) await save()
     },
     flush: async (send, now, log) => {
       let sent = 0
@@ -162,6 +177,8 @@ export async function openOutbox(path: string, seen: Seen): Promise<Outbox> {
       for (const [key, entry] of [...entries]) {
         // The duplicate check: the last thing before a send.
         if (seen.has(key)) {
+          // Only a key on disk in seen.json may settle a letter: otherwise a crash would lose both.
+          if (seen.unsaved()) await seen.save()
           settle(key)
           changed = true
           await written(log, `already sent ${key}; removed from the outbox`)
@@ -190,7 +207,7 @@ export async function openOutbox(path: string, seen: Seen): Promise<Outbox> {
           if (started?.drop !== undefined) await advanceDrop(dropKey, started, started.drop, send, now, log)
         } else await written(log, `FAILED ${entry.letter.to} ${entry.letter.subject} (try ${entry.attempts}; kept in the outbox)`)
       }
-      if (changed) await save()
+      if (changed || dirty) await save()
 
       return { sent, failed }
     },

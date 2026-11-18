@@ -9,12 +9,15 @@ export type Seen = {
   add(key: string, at: Date): void
   prune(activePrKeys: Set<string>, now: Date): void
   save(): Promise<void>
+  // True when memory has keys seen.json may not have (added since the last successful save).
+  unsaved(): boolean
 }
 
 const KEEP_MS = 14 * 24 * 60 * 60 * 1000
 
 export async function openSeen(path: string): Promise<Seen> {
   const keys = new Map<string, string>()
+  let unsaved = false
   try {
     const data: unknown = JSON.parse(await readFile(path, 'utf8'))
     if (typeof data === 'object' && data !== null && !Array.isArray(data))
@@ -25,6 +28,7 @@ export async function openSeen(path: string): Promise<Seen> {
     has: key => keys.has(key),
     add: (key, at) => {
       keys.set(key, at.toISOString())
+      unsaved = true
     },
     prune: (active, now) => {
       for (const [key, at] of keys) {
@@ -34,7 +38,10 @@ export async function openSeen(path: string): Promise<Seen> {
       }
     },
     save: async () => {
+      unsaved = true
       await writeJson(path, Object.fromEntries(keys))
+      unsaved = false
     },
+    unsaved: () => unsaved,
   }
 }

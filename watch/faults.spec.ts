@@ -12,6 +12,7 @@ import { createContext, handleDelivery, tick } from './daemon.ts'
 import type { DaemonContext } from './daemon.ts'
 import type { Trouble, WatchEvent } from './events.ts'
 import type { Relay } from './relay.ts'
+import { writeJson } from './files.ts'
 import { openOutbox } from './outbox.ts'
 import { lettersFor } from './route.ts'
 import type { Letter } from './route.ts'
@@ -238,6 +239,9 @@ async function dropSimulate(seed: number): Promise<string[]> {
   let pSend = r.pick([0.6, 0.8, 0.95])
   let pLog = r.pick([0, 0.2, 0.5])
   let pCrash = r.pick([0, 0.1, 0.3])
+  let pSave = r.pick([0, 0.2, 0.4])
+  const saveFails = pSave > 0
+  let failedSaves = 0
   let t = 0
   const at = () => new Date(Date.parse('2026-11-18T00:00:00Z') + t)
 
@@ -248,7 +252,16 @@ async function dropSimulate(seed: number): Promise<string[]> {
       if (r.next() < pCrash) throw new Error('crash after seen.json, before outbox.json')
     } }
 
-    return openOutbox(join(home, 'outbox.json'), seen)
+    // outbox.json writes fail now and then (a lock, EPERM on rename); the same process may go on afterwards.
+    const write = async (path: string, value: unknown) => {
+      if (r.next() < pSave) {
+        failedSaves++
+        throw new Error('EPERM: rename outbox.json')
+      }
+      await writeJson(path, value)
+    }
+
+    return openOutbox(join(home, 'outbox.json'), seen, write)
   }
   const send = async (letter: Letter) => {
     if (r.next() < pCrash) throw new Error('crash before the send')
@@ -264,21 +277,37 @@ async function dropSimulate(seed: number): Promise<string[]> {
     return true
   }
 
+  // Like a webhook delivery: once put resolves, the caller marks the fact handled and never offers it again.
+  let pending = [...letters]
   let outbox = await open()
-  await outbox.put(letters, at())
+  const offer = async () => {
+    for (const letter of [...pending]) {
+      await outbox.put([letter], at())
+      pending = pending.filter(l => l !== letter)
+    }
+  }
   for (let step = 0; step < 60; step++) {
     t += (1 + Math.floor(r.next() * 4)) * 60 * 60_000
     try {
-      if (r.next() < 0.2) await outbox.put(letters, at()) // a catch-up finds the same facts again
+      await offer()
+      // The process may die right after the caller marked its letters handled (a delivery ID saved).
+      if (r.next() < pCrash) outbox = await open()
+      // A catch-up finds the same facts again, for half the letters only: the other half, like the
+      // letters of a closed PR, are never offered again once the caller took them as handled.
+      if (r.next() < 0.2) await outbox.put(letters.slice(0, 3), at())
       await outbox.flush(send, at(), log)
     } catch {
-      outbox = await open() // the process died; a new one starts from the files
+      // A failed write: half the time the same process goes on, half the time it dies and a new one starts from the files.
+      if (r.next() < 0.5) outbox = await open()
     }
+    if (r.next() < pCrash) outbox = await open()
   }
   pSend = 0
   pLog = 0
   pCrash = 0
+  pSave = 0
   outbox = await open()
+  await offer()
   for (let i = 0; i < 20; i++) {
     t += 10 * 60_000
     await outbox.flush(send, at(), log)
@@ -292,9 +321,13 @@ async function dropSimulate(seed: number): Promise<string[]> {
     const sent = count(letter.key)
     const dropped = droppedLine(letter.key)
     const notice = `dropped:${letter.key}`
-    // No crash is injected after a successful send, so nothing may go out twice, and each DROPPED line is written once.
-    const told = letter.manager === undefined || (count(notice) === 1 && !droppedLine(notice)) || (count(notice) === 0 && droppedLines(notice) === 1)
-    const ok = (sent === 1 && !dropped && count(notice) === 0) || (sent === 0 && droppedLines(letter.key) === 1 && told)
+    // A letter is never sent twice: seen.json is saved right after each send. Without failed outbox writes,
+    // each drop step happens exactly once too. A failed write of a drop's progress followed by a crash makes
+    // the next process redo that step (the manager's line or a DROPPED line once more), never skip it.
+    // Each failed write can make one step happen once more, no more.
+    const once = (n: number) => (saveFails ? n >= 1 && n <= 1 + failedSaves : n === 1)
+    const told = letter.manager === undefined || (once(count(notice)) && (saveFails || !droppedLine(notice))) || (count(notice) === 0 && once(droppedLines(notice)))
+    const ok = (sent === 1 && !dropped && count(notice) === 0) || (sent === 0 && once(droppedLines(letter.key)) && told)
     if (!ok) problems.push(`seed ${seed}: ${letter.key} sent ${sent}, DROPPED line ${dropped}, notice sent ${count(notice)}`)
   }
   if (outbox.keys().length > 0) problems.push(`seed ${seed}: outbox not empty: ${outbox.keys().join(' ')}`)
