@@ -1,7 +1,7 @@
 # kantoku-watch design
 
 Date: 2026-11-18
-Status: design, not implemented
+Status: implemented (stage 1)
 Plan: [`docs/plans/2026-11-18-kantoku-watch.md`](../plans/2026-11-18-kantoku-watch.md)
 
 ## Why
@@ -39,7 +39,7 @@ kantoku-watch receives GitHub events for the PRs that kantoku children own and s
 - Node with TypeScript, no npm dependencies, like `hooks/`. It runs with Node's built-in type stripping (Node 22.18 or newer runs `.ts` files directly), so there is no build step. Only erasable TypeScript syntax: `type` and `import type`, no `enum`, no `namespace`, no parameter properties. Relative imports carry the `.ts` extension.
 - Code style follows `hooks/parse.ts`: lenient readers, a missing section is empty and never an error, small pure functions, no semicolons, single quotes.
 - Stage 1 relay is `gh webhook forward` (the `cli/gh-webhook` GitHub CLI extension). It creates a temporary webhook on one repo while it runs and forwards each delivery to a local URL. One process serves one repo. GitHub allows one such forwarder per repo at a time, so there is one kantoku-watch per machine, not one per manager.
-- `gh webhook forward` needs the `admin:repo_hook` token scope and admin rights on the repo.
+- `gh webhook forward` needs the `admin:repo_hook` token scope (or `repo`, which covers it) and admin rights on the repo.
 - The manager does no work itself (SKILL.md, "The manager's role"). It cannot run kantoku-watch.
 - Public repo: no company names, personal data, or local paths in code, fixtures, or docs.
 
@@ -306,18 +306,19 @@ The plugin root is two levels up from the kantoku skill's base directory, which 
 |---|---|---|---|
 | `gh` missing or not logged in | preflight (`gh auth status`) | `start` exits 2 with the fix to ask for | the watch child (→ escalation) |
 | `cli/gh-webhook` not installed | preflight (`gh extension list`) | `start` exits 2: "install with `gh extension install cli/gh-webhook`" | the watch child; installing needs the user's yes |
-| `admin:repo_hook` scope missing | preflight (`gh auth status` scopes) | `start` exits 2: "run `gh auth refresh -s admin:repo_hook`" | the watch child; the user runs it |
-| No admin rights on one repo | forwarder exits with 403/404 | that repo is marked failed; other repos keep going | manager, one line |
+| `admin:repo_hook` scope missing | preflight (`gh auth status` scopes): neither `repo` nor `admin:repo_hook` is listed (`repo` covers repo hooks) | `start` exits 2: "run `gh auth refresh -s admin:repo_hook`" | the watch child; the user runs it |
+| No admin rights on one repo (or no such repo) | forwarder stderr `error creating webhook: HTTP 404` | that repo is marked failed, no restart; other repos keep going | manager, one line |
+| A hook with the same config already exists | forwarder stderr `Hook already exists on this repository` (HTTP 422) | treated as already forwarded (usually an orphan forwarder); no restart loop | manager, one line |
 | Forwarder exits while running | child process exit | restart after 5 s, 30 s, 2 min; then give up on that repo | manager, one line on give-up |
 | Gave up on a repo | after the third restart fails | catch-up runs for that repo every 10 minutes instead (approach C) | included in the give-up line |
-| Forwarder reconnects | relay `onConnected` | catch-up for that repo | nobody, unless catch-up finds something |
+| Forwarder reconnects | relay `onConnected` (stderr line `Forwarding Webhook events from GitHub...`) | catch-up for that repo | nobody, unless catch-up finds something |
 | `orca orchestration send` fails | non-zero exit | key not stored; retried at the next trigger or catch-up | logged |
 | Daemon dies | stale pid in `status.json` | `status` says not running; the next `start` catches up since `lastAliveAt` | whoever runs `status` |
 | Delivery with a bad signature | HMAC check fails | dropped, logged | nobody |
 
 The receiver binds `127.0.0.1` only, on a free port, and checks `X-Hub-Signature-256` against the secret passed to `gh webhook forward --secret`.
 
-`stop` (and the idle stop) ends each forwarder so `gh webhook forward` removes its temporary webhook. Whether that works on Windows, where a child process cannot be sent Ctrl-C, is checked in plan task 1. If a webhook can be left behind, `stop` lists leftover hooks it created (matched by the forwarder's URL pattern) and prints them; deleting them is a user decision, not automatic.
+`stop` (and the idle stop) ends each forwarder, and GitHub removes the temporary webhook when the forwarder's connection closes (plan task 1: gone in about a second, no Ctrl-C needed). On Windows `gh webhook forward` is `gh.exe` with a child `gh-webhook.exe`, and killing only `gh.exe` leaves `gh-webhook.exe` forwarding and the hook in place. So the relay kills the whole process tree (`taskkill /PID <pid> /T /F` on Windows). As a safety net, `stop` lists leftover hooks whose `config.url` is `https://webhook-forwarder.github.com/hook` and prints them; deleting them is a user decision, not automatic.
 
 ## Commands
 
@@ -329,7 +330,7 @@ node watch/cli.ts catchup                          one catch-up pass, no forward
 node watch/cli.ts run                              the daemon itself, in the foreground (what start launches)
 ```
 
-`start` launches `run` as a detached process with `ORCA_TERMINAL_HANDLE` and the other per-terminal Orca variables removed from its environment, so letters do not look like mail from the watch child that started it (and keep working after that child is released). Plan task 1 checks that `orca orchestration send --to dispatch:…` and `--to run:…` work from such a process; if they do not, the fallback is to send everything to `run:` and let the manager relay to the child.
+`start` launches `run` as a detached process with `ORCA_TERMINAL_HANDLE` and the other `ORCA_*` variables removed from its environment. Plan task 1 showed that `orca orchestration send --to dispatch:…` and `--to run:…` both work from such a process. Removing the variables does not hide the sender: Orca still shows the pane that started the daemon as the sender. Letters are identified by the `kantoku-watch:` subject and the `[kantoku-watch]` first line, not by the sender. Child letters go to `dispatch:`.
 
 `stop` talks to the daemon over its local HTTP server (`POST /shutdown` with the secret), so the daemon shuts its forwarders down itself on every OS.
 
