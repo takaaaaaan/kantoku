@@ -8,18 +8,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { catchUp } from './catchup.ts'
-import { createContext, handleDelivery, isApproved, log, login, readPrs, statusOf, tick, writeJson } from './daemon.ts'
+import { acquireLock, catchUpOnce, createContext, handleDelivery, isApproved, log, login, readPrs, releaseLock, statusOf, tick, writeJson } from './daemon.ts'
 import type { Status } from './daemon.ts'
 import type { Trouble } from './events.ts'
-import { sendLetters } from './notify.ts'
 import { startReceiver } from './receiver.ts'
 import { ghForwardRelay, realSpawn } from './relays/gh-forward.ts'
-import { lettersFor } from './route.ts'
 import { realRun } from './run.ts'
 import type { Run } from './run.ts'
-import { openSeen } from './seen.ts'
 import { prKey, readAllTargets } from './targets.ts'
+import type { Relay } from './relay.ts'
 
 export type CliDeps = {
   run: Run
@@ -49,6 +46,7 @@ const FIX: Partial<Record<Trouble, string>> = {
 const FORWARDER_HOOK_URL = 'https://webhook-forwarder.github.com/hook'
 const LOOP_MS = 15_000
 const START_WAIT_MS = 10_000
+const HEARTBEAT_MAX_MS = 2 * 60_000
 
 const realDeps: CliDeps = {
   run: realRun,
@@ -74,7 +72,8 @@ const realDeps: CliDeps = {
 }
 
 function pathsOf(env: Env): Paths {
-  const base = env.USERPROFILE ?? env.HOME ?? homedir()
+  // HOME first, like the manager panel (hooks/register.tsx), so both read the same ~/.kantoku.
+  const base = env.HOME ?? env.USERPROFILE ?? homedir()
 
   return {
     home: env.KANTOKU_WATCH_HOME ?? join(base, '.kantoku-watch'),
@@ -167,10 +166,13 @@ async function readStatus(paths: Paths): Promise<Status | undefined> {
   }
 }
 
+// Running means a live pid and a heartbeat (written every 15 s) under 2 minutes old,
+// so a pid reused by another process after a crash does not count.
 async function running(paths: Paths, deps: CliDeps): Promise<Status | undefined> {
   const status = await readStatus(paths)
+  const fresh = status !== undefined && Date.now() - Date.parse(status.lastAliveAt) < HEARTBEAT_MAX_MS
 
-  return status !== undefined && status.pid > 0 && deps.isAlive(status.pid) ? status : undefined
+  return status !== undefined && status.pid > 0 && fresh && deps.isAlive(status.pid) ? status : undefined
 }
 
 function printStatus(status: Status, deps: CliDeps) {
@@ -205,13 +207,18 @@ async function preflight(deps: CliDeps): Promise<boolean> {
 
 async function start(paths: Paths, allow: string[], env: Env, deps: CliDeps): Promise<number> {
   const live = await running(paths, deps)
-  if (live !== undefined) {
+  if (live !== undefined && allow.length === 0) {
     deps.out(`kantoku-watch: already running (pid ${live.pid})`)
     printStatus(live, deps)
 
     return 0
   }
   if (!(await preflight(deps))) return 2
+  // An approval is given per start, so a running daemon restarts to take --allow.
+  if (live !== undefined) {
+    deps.out(`kantoku-watch: restarting pid ${live.pid} to apply --allow`)
+    if (!(await shutdown(paths, live, deps))) return 1
+  }
   await ensureSecret(paths)
 
   const me = await login(deps.run)
@@ -253,16 +260,7 @@ async function stop(paths: Paths, deps: CliDeps): Promise<number> {
 
     return 0
   }
-  const secret = await ensureSecret(paths)
-  try {
-    await deps.post(`http://127.0.0.1:${live.port}/shutdown`, { 'x-kantoku-watch-secret': secret })
-  } catch {}
-  for (let waited = 0; deps.isAlive(live.pid) && waited < START_WAIT_MS; waited += 250) await deps.sleep(250)
-  if (deps.isAlive(live.pid)) {
-    deps.out(`kantoku-watch: pid ${live.pid} did not stop`)
-
-    return 1
-  }
+  if (!(await shutdown(paths, live, deps))) return 1
   deps.out('kantoku-watch: stopped')
 
   // GitHub drops a forwarder's hook when its connection closes. List any left behind; deleting is the user's call.
@@ -275,6 +273,26 @@ async function stop(paths: Paths, deps: CliDeps): Promise<number> {
   }
 
   return 0
+}
+
+async function shutdown(paths: Paths, live: Status, deps: CliDeps): Promise<boolean> {
+  const secret = await ensureSecret(paths)
+  try {
+    await deps.post(`http://127.0.0.1:${live.port}/shutdown`, { 'x-kantoku-watch-secret': secret })
+  } catch {}
+  for (let waited = 0; deps.isAlive(live.pid) && waited < START_WAIT_MS; waited += 250) await deps.sleep(250)
+  if (deps.isAlive(live.pid)) deps.out(`kantoku-watch: pid ${live.pid} did not stop`)
+
+  return !deps.isAlive(live.pid)
+}
+
+const NO_RELAY: Relay = {
+  name: 'none',
+  preflight: async () => [],
+  sync: async () => {},
+  stop: async () => {},
+  onConnected: () => {},
+  onTrouble: () => {},
 }
 
 async function status(paths: Paths, deps: CliDeps): Promise<number> {
@@ -291,19 +309,9 @@ async function status(paths: Paths, deps: CliDeps): Promise<number> {
 async function catchupOnce(paths: Paths, deps: CliDeps, from: string | undefined): Promise<number> {
   await mkdir(paths.home, { recursive: true })
   const now = new Date()
-  const seen = await openSeen(join(paths.home, 'seen.json'))
-  const prs = await readPrs(join(paths.home, 'prs.json'))
-  const targets = await readAllTargets(paths.stateRoot)
-  let sent = 0
-  for (const key of new Set(targets.map(t => prKey(t.pr)))) {
-    const pr = targets.find(t => prKey(t.pr) === key)?.pr
-    if (pr === undefined || prs[key]?.closedAt !== undefined) continue
-    const record = prs[key]
-    for (const event of await catchUp(deps.run, pr, record !== undefined, record === undefined ? undefined : new Date(record.firstSeenAt)))
-      sent += (await sendLetters(deps.run, lettersFor(event, targets, now), seen, now, from)).sent
-  }
-  await seen.save()
-  deps.out(`kantoku-watch: catch-up sent ${sent} letter(s)`)
+  const ctx = await createContext({ run: deps.run, relay: NO_RELAY, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(), port: 0, now, from })
+  await catchUpOnce(ctx, now)
+  deps.out(`kantoku-watch: catch-up done. See ${join(paths.home, 'watch.log')} for the letters sent`)
 
   return 0
 }
@@ -311,6 +319,11 @@ async function catchupOnce(paths: Paths, deps: CliDeps, from: string | undefined
 async function runDaemon(paths: Paths, allow: string[], deps: CliDeps, from: string | undefined): Promise<number> {
   await mkdir(paths.home, { recursive: true })
   if (!(await preflight(deps))) return 2
+  if (!(await acquireLock(paths.home, process.pid, deps.isAlive))) {
+    await log(paths, `another daemon holds ${join(paths.home, 'daemon.lock')}; pid ${process.pid} exits`)
+
+    return 0
+  }
   const secret = await ensureSecret(paths)
   let stopping = false
   let wake = () => {}
@@ -353,6 +366,7 @@ async function runDaemon(paths: Paths, allow: string[], deps: CliDeps, from: str
   await relay.stop()
   await receiver.close()
   await writeJson(join(paths.home, 'status.json'), { ...statusOf(ctx, new Date()), pid: 0 })
+  await releaseLock(paths.home, process.pid)
   await log(paths, 'stopped')
 
   return 0

@@ -3,7 +3,7 @@
 // deliveries come in through handleDelivery. Both paths run one at a time, so
 // a letter is never sent twice by a race between them.
 
-import { appendFile, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { appendFile, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { catchUp, ciEvent } from './catchup.ts'
 import { parseWebhook } from './events.ts'
@@ -61,6 +61,7 @@ export type DaemonContext = {
   toCatchUp: Set<string>
   relayTroubles: Map<string, Trouble>
   newTroubles: { repo: string; problem: Trouble }[]
+  emptyOnce: boolean
   lock: Promise<unknown>
 }
 
@@ -92,6 +93,7 @@ export async function createContext(options: ContextOptions): Promise<DaemonCont
     toCatchUp: new Set(),
     relayTroubles: new Map(),
     newTroubles: [],
+    emptyOnce: false,
     lock: Promise.resolve(),
   }
   relay.onConnected(repo => {
@@ -132,8 +134,9 @@ function serial<T>(ctx: DaemonContext, job: () => Promise<T>): Promise<T> {
 
 export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-stop'> {
   return serial(ctx, async () => {
-    ctx.targets = await readAllTargets(ctx.stateRoot)
+    await readTargets(ctx)
     const open = openPrs(ctx)
+    const toCatchUp = new Set(ctx.toCatchUp)
 
     const repos = [...new Set(open.map(pr => pr.repo))].sort()
     const forwarded: string[] = []
@@ -162,10 +165,10 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
       const key = prKey(pr)
       const due = ctx.repos[pr.repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(pr.repo) ?? 0) >= POLL_MS
       if (ctx.prs[key] === undefined) await catchUpPr(ctx, pr, false, now)
-      else if (ctx.toCatchUp.has(pr.repo) || due) await catchUpPr(ctx, pr, true, now)
+      else if (toCatchUp.has(pr.repo) || due) await catchUpPr(ctx, pr, true, now)
     }
+    for (const repo of toCatchUp) ctx.toCatchUp.delete(repo)
     for (const repo of repos) {
-      ctx.toCatchUp.delete(repo)
       if (ctx.repos[repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(repo) ?? 0) >= POLL_MS) ctx.lastPollAt.set(repo, now.getTime())
     }
 
@@ -215,32 +218,88 @@ function openPrs(ctx: DaemonContext): PrRef[] {
   return [...open.values()]
 }
 
+// A manager rewriting state.md can be read half-written. One empty read keeps
+// the previous targets, so the forwarders are not stopped and started again.
+async function readTargets(ctx: DaemonContext) {
+  const targets = await readAllTargets(ctx.stateRoot)
+  if (targets.length === 0 && ctx.targets.length > 0 && !ctx.emptyOnce) {
+    ctx.emptyOnce = true
+
+    return
+  }
+  ctx.emptyOnce = false
+  ctx.targets = targets
+}
+
 async function catchUpPr(ctx: DaemonContext, pr: PrRef, known: boolean, now: Date) {
   const key = prKey(pr)
   const record = ctx.prs[key]
   const events = await catchUp(ctx.run, pr, known, record === undefined ? undefined : new Date(record.firstSeenAt))
+  if (events === undefined) return
   // A PR first seen in rows that are all done is old news: record it without letters.
   const quiet = !known && ctx.targets.filter(t => prKey(t.pr) === key).every(t => t.rowDone)
-  ctx.prs[key] = record ?? { firstSeenAt: now.toISOString() }
-  for (const event of events) await report(ctx, event, now, quiet)
+  let allSent = true
+  for (const event of events) allSent = (await report(ctx, event, now, quiet)) && allSent
+  // A first-seen PR is recorded once its letters went out; until then the next tick tries the first-seen pass again.
+  if (allSent && ctx.prs[key] === undefined) ctx.prs[key] = { firstSeenAt: now.toISOString() }
 }
 
-async function report(ctx: DaemonContext, event: WatchEvent, now: Date, quiet = false) {
-  if (event.kind === 'closed' && ctx.targets.some(t => prKey(t.pr) === prKey(event.pr))) {
+// Returns false when a letter could not be sent. Then the PR's repo is caught up
+// again at the next tick, and a close is recorded only once its letters went out.
+async function report(ctx: DaemonContext, event: WatchEvent, now: Date, quiet = false): Promise<boolean> {
+  const letters = lettersFor(event, ctx.targets, now)
+  let ok = true
+  if (quiet) for (const letter of letters) ctx.seen.add(letter.key, now)
+  else {
+    const fresh = letters.filter(letter => !ctx.seen.has(letter.key))
+    if (fresh.length > 0) {
+      const result = await sendLetters(ctx.run, fresh, ctx.seen, now, ctx.options.from)
+      for (const letter of fresh) await log(ctx, `${ctx.seen.has(letter.key) ? 'sent' : 'FAILED'} ${letter.to} ${letter.subject}`)
+      ok = result.failed === 0
+      if (!ok) await log(ctx, `${result.failed} letter(s) not sent; tried again at the next tick`)
+    }
+  }
+  if (!ok && 'pr' in event) ctx.toCatchUp.add(event.pr.repo)
+  if (ok && event.kind === 'closed' && ctx.targets.some(t => prKey(t.pr) === prKey(event.pr))) {
     const key = prKey(event.pr)
     ctx.prs[key] = { firstSeenAt: ctx.prs[key]?.firstSeenAt ?? now.toISOString(), closedAt: now.toISOString() }
   }
-  const letters = lettersFor(event, ctx.targets, now)
-  if (quiet) {
-    for (const letter of letters) ctx.seen.add(letter.key, now)
 
-    return
-  }
-  const fresh = letters.filter(letter => !ctx.seen.has(letter.key))
-  if (fresh.length === 0) return
-  const result = await sendLetters(ctx.run, fresh, ctx.seen, now, ctx.options.from)
-  for (const letter of fresh) await log(ctx, `${ctx.seen.has(letter.key) ? 'sent' : 'FAILED'} ${letter.to} ${letter.subject}`)
-  if (result.failed > 0) await log(ctx, `${result.failed} letter(s) not sent; retried at the next trigger or catch-up`)
+  return ok
+}
+
+// One catch-up pass over every open PR, without forwarding (the `catchup` command).
+export async function catchUpOnce(ctx: DaemonContext, now: Date): Promise<void> {
+  await serial(ctx, async () => {
+    await readTargets(ctx)
+    for (const pr of openPrs(ctx)) await catchUpPr(ctx, pr, ctx.prs[prKey(pr)] !== undefined, now)
+    await ctx.seen.save()
+    await savePrs(ctx)
+  })
+}
+
+// One daemon per machine: the lock file holds the pid of the one that runs.
+export async function acquireLock(home: string, pid: number, isAlive: (pid: number) => boolean): Promise<boolean> {
+  const path = join(home, 'daemon.lock')
+  try {
+    await writeFile(path, String(pid), { flag: 'wx' })
+
+    return true
+  } catch {}
+  try {
+    const holder = Number((await readFile(path, 'utf8')).trim())
+    if (holder !== pid && Number.isInteger(holder) && holder > 0 && isAlive(holder)) return false
+  } catch {}
+  await writeFile(path, String(pid))
+
+  return true
+}
+
+export async function releaseLock(home: string, pid: number): Promise<void> {
+  const path = join(home, 'daemon.lock')
+  try {
+    if (Number((await readFile(path, 'utf8')).trim()) === pid) await unlink(path)
+  } catch {}
 }
 
 export function statusOf(ctx: DaemonContext, now: Date): Status {

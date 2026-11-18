@@ -421,6 +421,9 @@ Manual checks (in the plan, on a personal test repo, never an org repo): the end
 - Manager lines only for events that change a task's state, not for comments.
 - Its own state.md parser instead of importing `hooks/parse.ts`.
 - Idle stop after 10 minutes with no open watched PR; `stop` is for people.
+- A PR reopened after its close was recorded is not watched again (`pull_request` `reopened` is not handled).
+- A letter that fails to send makes its repo be caught up again at the next tick; a close is recorded only after its letters went out.
+- One daemon per machine is enforced with `~/.kantoku-watch/daemon.lock`; `start --allow` on a running daemon restarts it, since an approval belongs to one start.
 - Node 22.18+ type stripping instead of a build step.
 
 ## Left to the builder

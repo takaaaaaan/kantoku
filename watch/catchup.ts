@@ -48,10 +48,11 @@ export async function ciEvent(run: Run, pr: PrRef, headSha?: string): Promise<Wa
   return ciFor(run, pr, head)
 }
 
-export async function catchUp(run: Run, pr: PrRef, known: boolean, since: Date | undefined): Promise<WatchEvent[]> {
+// undefined: the PR could not be read (gh failed); the caller tries again later.
+export async function catchUp(run: Run, pr: PrRef, known: boolean, since: Date | undefined): Promise<WatchEvent[] | undefined> {
   const events: WatchEvent[] = []
   const view = await viewOf(run, pr)
-  if (view === undefined) return events
+  if (view === undefined) return undefined
   const head = typeof view.headRefOid === 'string' ? view.headRefOid : undefined
   const ci = head === undefined ? undefined : await ciFor(run, pr, head)
   if (ci !== undefined) events.push(ci)

@@ -118,6 +118,7 @@ node watch/cli.ts stop                             stop it and its forwarders
 - **Repos you do not own need your yes.** `start` prints `needs approval: owner/repo` for them and forwards only the repos named with `--allow` on that start. The approval is not saved.
 - **Nothing is left behind.** GitHub drops the temporary webhook when the forwarder stops. `stop` lists any forwarder hook it still finds, and leaves deleting it to you.
 - One daemon serves every manager on the machine. Its files live in `~/.kantoku-watch/`.
+- **Limits.** A PR reopened after kantoku-watch saw it close is not watched again. Approve and request-changes reviews cannot be tested on your own PR (GitHub does not allow them), so they were checked by unit tests only.
 
 ## Tips
 

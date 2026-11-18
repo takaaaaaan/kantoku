@@ -52,7 +52,7 @@ test('catchUp, known PR: only reviews and comments after since', async () => {
     comments: [comment(10, 'x', '2026-11-18T09:00:00Z'), comment(11, 'y', '2026-11-18T11:00:00Z'), comment(12, 'bot', '2026-11-18T11:00:00Z', 'Bot')],
   })
   const events = await catchUp(run, pr, true, new Date('2026-11-18T10:00:00Z'))
-  assert.deepEqual(events.map(e => e.kind === 'review' || e.kind === 'comment' ? `${e.kind}:${e.id}` : e.kind), ['ci', 'review:2', 'comment:11'])
+  assert.deepEqual(events?.map(e => e.kind === 'review' || e.kind === 'comment' ? `${e.kind}:${e.id}` : e.kind), ['ci', 'review:2', 'comment:11'])
   assert.deepEqual(run.calls.find(c => c[2]?.endsWith('/reviews')), ['gh', 'api', 'repos/owner/repo/pulls/12/reviews', '--paginate', '--slurp'])
 })
 
@@ -67,19 +67,19 @@ test('catchUp, first-seen PR: latest decision per reviewer, no comments', async 
     comments: [comment(10, 'x', '2026-11-18T09:00:00Z')],
   })
   const events = await catchUp(run, pr, false, undefined)
-  assert.deepEqual(events.map(e => e.kind === 'review' ? `${e.id}:${e.state}` : e.kind), ['ci', '2:approved', '4:changes_requested'])
+  assert.deepEqual(events?.map(e => e.kind === 'review' ? `${e.id}:${e.state}` : e.kind), ['ci', '2:approved', '4:changes_requested'])
 })
 
 test('catchUp, closed PR yields closed with merged from the state', async () => {
   const merged = await catchUp(gh({ view: view({ state: 'MERGED', mergedAt: '2026-11-18T10:00:00Z', mergedBy: { login: 'merger-login' } }) }), pr, true, new Date())
-  assert.deepEqual(merged.at(-1), { kind: 'closed', pr, merged: true, by: 'merger-login' })
+  assert.deepEqual(merged?.at(-1), { kind: 'closed', pr, merged: true, by: 'merger-login' })
   const closed = await catchUp(gh({ view: view({ state: 'CLOSED' }) }), pr, true, new Date())
-  assert.deepEqual(closed.at(-1), { kind: 'closed', pr, merged: false, by: '' })
+  assert.deepEqual(closed?.at(-1), { kind: 'closed', pr, merged: false, by: '' })
 })
 
-test('catchUp: gh failing returns what it could read, never throws', async () => {
+test('catchUp: a PR it cannot read gives undefined, never throws', async () => {
   const run = fakeRun(() => ({ code: 1, stderr: 'HTTP 502' }))
-  assert.deepEqual(await catchUp(run, pr, true, new Date()), [])
+  assert.equal(await catchUp(run, pr, true, new Date()), undefined)
 })
 
 test('the same review from a webhook and from catch-up has the same factKey', async () => {
@@ -87,7 +87,7 @@ test('the same review from a webhook and from catch-up has the same factKey', as
   const fromHook = parseWebhook('pull_request_review', payload)
   const r = payload.review
   const run = gh({ reviews: [{ id: r.id, user: r.user, state: 'APPROVED', body: r.body, html_url: r.html_url, submitted_at: '2026-11-18T10:00:00Z' }] })
-  const fromCatchUp = (await catchUp(run, pr, false, undefined)).find(e => e.kind === 'review')
+  const fromCatchUp = (await catchUp(run, pr, false, undefined))?.find(e => e.kind === 'review')
   assert.ok(fromHook && fromCatchUp)
   assert.equal(factKey(fromCatchUp), factKey(fromHook))
   assert.deepEqual(fromCatchUp, fromHook)

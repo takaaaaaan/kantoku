@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createContext, handleDelivery, tick } from './daemon.ts'
+import { acquireLock, createContext, handleDelivery, tick } from './daemon.ts'
 import type { Relay } from './relay.ts'
 import type { Trouble } from './events.ts'
 import { fakeRun, json } from './testing.ts'
@@ -239,4 +239,93 @@ test('a PR in a repo waiting for approval does not keep the daemon alive', async
   const ctx = await s.make()
   assert.equal(await tick(ctx, at(0)), 'continue')
   assert.equal(await tick(ctx, at(11)), 'idle-stop')
+})
+
+function flaky(fails: { orca: number; view?: number }, state = 'OPEN', onView?: () => void) {
+  return fakeRun((cmd, args) => {
+    if (cmd === 'orca') return fails.orca-- > 0 ? { code: 1, stderr: 'orca down' } : {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') {
+      onView?.()
+      if ((fails.view ?? 0) > 0) {
+        fails.view = (fails.view ?? 0) - 1
+
+        return { code: 1, stderr: 'HTTP 502' }
+      }
+
+      return json({ state, headRefOid: head, mergedBy: null })
+    }
+    if (args[0] === 'pr' && args[1] === 'checks') return json([{ name: 'b', bucket: 'pass' }])
+
+    return json([[]])
+  })
+}
+const sent = (run: { calls: string[][] }) => run.calls.filter(c => c[0] === 'orca').map(c => c[4])
+
+test('a letter that failed is retried by a catch-up at the next tick', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const run = flaky({ orca: 2 })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  await tick(ctx, at(1))
+  assert.deepEqual(sent(run), ['dispatch:ctx_1', 'run:run_1', 'dispatch:ctx_1', 'run:run_1'])
+})
+
+test('a closed letter that failed keeps the PR open until it is sent', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const run = flaky({ orca: 4 }, 'CLOSED')
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  assert.equal(ctx.prs['me-login/app#1']?.closedAt, undefined)
+  await tick(ctx, at(1))
+  assert.equal(typeof ctx.prs['me-login/app#1']?.closedAt, 'string')
+})
+
+test('a first-seen PR that gh could not read is tried again', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const run = flaky({ orca: 0, view: 1 })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  assert.equal(ctx.prs['me-login/app#1'], undefined)
+  await tick(ctx, at(1))
+  assert.notEqual(ctx.prs['me-login/app#1'], undefined)
+})
+
+test('a connection that comes during a tick is caught up at the next one', async () => {
+  const s = setup(['| A | wt | ctx_1 | me-login/app#1 | x | — |', '| B | wt | ctx_2 | me-login/app#2 | x | — |'])
+  const ctx = await s.make()
+  await tick(ctx, at(0))
+  let connectNow = true
+  const run = flaky({ orca: 0 }, 'OPEN', () => {
+    if (connectNow) s.relay.connect('me-login/app')
+    connectNow = false
+  })
+  ctx.run = run
+  s.write(['| A | wt | ctx_1 | me-login/app#1 | x | — |', '| B | wt | ctx_2 | me-login/app#2 | x | — |', '| C | wt | ctx_3 | me-login/app#3 | x | — |'])
+  await tick(ctx, at(1))
+  const views = () => run.calls.filter(c => c[1] === 'pr' && c[2] === 'view').length
+  const before = views()
+  await tick(ctx, at(2))
+  assert.equal(views(), before + 3)
+})
+
+test('one empty read of state.md does not stop the forwarders; two do', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const ctx = await s.make()
+  await tick(ctx, at(0))
+  s.write([])
+  await tick(ctx, at(1))
+  assert.deepEqual(s.relay.synced.at(-1), ['me-login/app'])
+  await tick(ctx, at(2))
+  assert.deepEqual(s.relay.synced.at(-1), [])
+})
+
+test('acquireLock lets one daemon run', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'kw-lock-'))
+  const alive = new Set([111])
+  assert.equal(await acquireLock(home, 111, pid => alive.has(pid)), true)
+  assert.equal(await acquireLock(home, 222, pid => alive.has(pid)), false)
+  alive.delete(111)
+  assert.equal(await acquireLock(home, 222, pid => alive.has(pid) || pid === 222), true)
+  assert.equal(readFileSync(join(home, 'daemon.lock'), 'utf8').trim(), '222')
 })

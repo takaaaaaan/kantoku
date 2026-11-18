@@ -45,7 +45,7 @@ ${(over.rows ?? []).join('\n')}
       const pid = 4242
       alive.add(pid)
       mkdirSync(env.KANTOKU_WATCH_HOME, { recursive: true })
-      writeFileSync(join(env.KANTOKU_WATCH_HOME, 'status.json'), JSON.stringify({ pid, port: 5555, startedAt: 'x', lastAliveAt: 'x', repos: { 'me-login/app': 'forwarding' }, troubles: [] }))
+      writeFileSync(join(env.KANTOKU_WATCH_HOME, 'status.json'), JSON.stringify({ pid, port: 5555, startedAt: 'x', lastAliveAt: new Date().toISOString(), repos: { 'me-login/app': 'forwarding' }, troubles: [] }))
 
       return pid
     },
@@ -57,9 +57,9 @@ ${(over.rows ?? []).join('\n')}
     },
   }
   const statusFile = join(env.KANTOKU_WATCH_HOME, 'status.json')
-  const writeStatus = (pid: number) => {
+  const writeStatus = (pid: number, lastAliveAt = new Date().toISOString()) => {
     mkdirSync(env.KANTOKU_WATCH_HOME, { recursive: true })
-    writeFileSync(statusFile, JSON.stringify({ pid, port: 5555, startedAt: 's', lastAliveAt: 'l', repos: {}, troubles: [] }))
+    writeFileSync(statusFile, JSON.stringify({ pid, port: 5555, startedAt: 's', lastAliveAt, repos: {}, troubles: [] }))
   }
 
   return { env: { ...env, ORCA_TERMINAL_HANDLE: 'term_x', ORCA_OTHER: 'y' }, deps, out, spawned, posts, writeStatus, home: env.KANTOKU_WATCH_HOME }
@@ -165,4 +165,38 @@ test('windowsCommandLine quotes every argument and refuses double quotes', () =>
   assert.equal(windowsCommandLine('C:/node/node.exe', ['C:/a b/cli.ts', 'run', '--allow', 'o/r']), '"C:/node/node.exe" "C:/a b/cli.ts" "run" "--allow" "o/r"')
   assert.throws(() => windowsCommandLine('node', ['a"b']))
   assert.throws(() => windowsCommandLine('node', ['a\\']))
+})
+
+test('start --allow on a running daemon restarts it with the approval', async () => {
+  const s = setup()
+  s.writeStatus(process.pid)
+  writeFileSync(join(s.home, 'secret'), 'a'.repeat(64))
+  assert.equal(await main(['start', '--allow', 'some-org/app'], s.env, s.deps), 0)
+  assert.equal(s.posts.length, 1)
+  assert.equal(s.spawned.length, 1)
+  assert.deepEqual(s.spawned[0]?.slice(-2), ['--allow', 'some-org/app'])
+})
+
+test('a pid whose heartbeat is over 2 minutes old is not running', async () => {
+  const s = setup()
+  s.writeStatus(process.pid, new Date(Date.now() - 3 * 60_000).toISOString())
+  assert.equal(await main(['status'], s.env, s.deps), 0)
+  assert.match(s.out.join('\n'), /not running/)
+  assert.equal(await main(['start'], s.env, s.deps), 0)
+  assert.equal(s.spawned.length, 1)
+})
+
+test('catchup runs one pass like the daemon: letters sent, PRs recorded', async () => {
+  const s = setup({ rows: ['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'] })
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') return json({ state: 'MERGED', headRefOid: 'abc', mergedBy: { login: 'x' } })
+    if (args[0] === 'pr' && args[1] === 'checks') return json([{ name: 'b', bucket: 'pass' }])
+
+    return json([[]])
+  })
+  assert.equal(await main(['catchup'], s.env, { ...s.deps, run }), 0)
+  assert.equal(run.calls.filter(c => c[0] === 'orca').length, 4)
+  assert.equal(typeof JSON.parse(readFileSync(join(s.home, 'prs.json'), 'utf8'))['me-login/app#1'].closedAt, 'string')
 })
