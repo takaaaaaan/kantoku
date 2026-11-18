@@ -1,6 +1,6 @@
 {
   "name": "kantoku",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Turn one Claude Code session into a manager (kantoku = 監督) that dispatches tasks to Orca child sessions, triages their questions, verifies their work with a separate verifier, and patrols until done.",
   "author": {
     "name": "takaaaaaan"
@@ -8,5 +8,14 @@
   "homepage": "https://github.com/takaaaaaan/kantoku",
   "repository": "https://github.com/takaaaaaan/kantoku",
   "license": "MIT",
-  "keywords": ["orca", "orchestration", "manager", "multi-agent", "supervisor"]
+  "keywords": ["orca", "orchestration", "manager", "multi-agent", "supervisor"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showPanelOnStart": {
+      "type": "boolean",
+      "title": "Show the Manager panel at start",
+      "description": "Open the kantoku Manager panel beside the chat when a manager session starts. /kantoku-panel show|hide|toggle changes it for one session.",
+      "default": true
+    }
+  }
 }

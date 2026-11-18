@@ -90,7 +90,8 @@ With several managers running, it is easy to lose track of which session does wh
 - **Only in manager sessions.** The panel opens when a `~/.kantoku/<name>/state.md` names this session's `$ORCA_TERMINAL_HANDLE` on its `terminal:` line, which the manager writes at startup. Other sessions get no panel.
 - **What it shows.** The manager's name, the first sentence of its duties and its autonomy from `profile.md`, then the `## Tasks` table and `## Queue` from `state.md` as a todo list. Open tasks come first, then the queue, then what is done.
 - **Live.** It rereads both files every 5 seconds, so it follows the manager as it works. It never writes to them.
-- **Reopen it** with `/kantoku-panel` after closing it. The terminal docks a pane on its own only when it is at least 144 columns wide; `/kantoku-panel` opens it at any width.
+- **Show or hide it** with `/kantoku-panel show`, `/kantoku-panel hide`, or `/kantoku-panel` alone to toggle. The choice lasts for the session, and closing the pane by hand counts as hiding it. The terminal docks a pane on its own only when it is at least 144 columns wide; `/kantoku-panel show` opens it at any width.
+- **Start hidden** by turning off **Show the Manager panel at start** in `/config` (search for "panel"). It is on by default. Claude Code saves it in your user settings under `pluginConfigs`, so it stays after a restart.
 
 The mod comes with the plugin, so installing kantoku installs it. It needs a Claude Code version with mods (plugin hooks modules).
 

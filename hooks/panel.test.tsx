@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 // The engine makes the path absolute, so files are matched by their ending.
@@ -44,6 +45,8 @@ const PANE = {
 } as const
 
 type World = {
+  // Panes the engine lists but does not draw, as on a narrow terminal.
+  undrawn?: boolean
   files?: Record<string, string>
   // When each manager's state.md was last written, by manager name.
   writtenAt?: Record<string, number>
@@ -57,6 +60,8 @@ function engine(on: On, handle: string | undefined, world: World = {}) {
   const files = world.files ?? FILES
   let refusals = world.refusals ?? 0
   const opened: string[] = []
+  // The panes up now, as the engine would list them.
+  const up = new Set<string>()
   on('fs.stat', (_, e) => {
     const name = /\.kantoku[\\/]([^\\/]+)[\\/]/.exec(e.path)?.[1] ?? ''
 
@@ -79,19 +84,27 @@ function engine(on: On, handle: string | undefined, world: World = {}) {
     return { value: text }
   })
   on('command.register', () => ({ value: { command: 'kantoku-panel' } }))
-  on('ui.panes', () => ({ value: [] }))
+  on('ui.panes', () => ({
+    value: [...up].map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: world.undrawn !== true })),
+  }))
+  on('ui.close', (_, e) => {
+    up.delete(e.id)
+
+    return { value: undefined }
+  })
   on('ui.open', (_, e) => {
     if (refusals > 0) {
       refusals -= 1
       throw new Error('pane held by another plugin')
     }
     opened.push(`${e.id} ${e.title}`)
+    up.add(e.id)
 
     return { value: { isPlaced: true } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
-  return { opened, clock }
+  return { opened, clock, up }
 }
 
 test('a manager session opens the panel with its profile and tasks', async ($, on) => {
@@ -158,4 +171,118 @@ test('an open the engine refused is tried again at the next poll', async ($, on)
 
   await clock.advance(5000)
   expect(opened).toEqual(['kantoku-manager kaizenくん'])
+})
+
+const START = { cwd: '/', surface: 'terminal', isInteractive: true } as const
+
+const run = ($: Engine, args: string) =>
+  $.command.run({
+    command: 'kantoku-panel',
+    args,
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: true, columns: 160 },
+  })
+
+test('with showPanelOnStart off, a manager session starts with the panel hidden', { options: { showPanelOnStart: false } }, async ($, on) => {
+  const { opened, clock } = engine(on, 'term_manager')
+  await $.session.start(START)
+  await clock.advance(5000)
+
+  expect(opened).toEqual([])
+
+  const ran = await run($, 'show')
+  expect(opened).toEqual(['kantoku-manager kaizenくん'])
+  expect(JSON.stringify(ran)).toContain('Opened')
+})
+
+test('hide closes the panel, and the poll leaves it closed', async ($, on) => {
+  const { opened, clock, up } = engine(on, 'term_manager')
+  await $.session.start(START)
+  expect([...up]).toEqual(['kantoku-manager'])
+
+  const ran = await run($, 'hide')
+  expect(JSON.stringify(ran)).toContain('Hid')
+  expect([...up]).toEqual([])
+
+  await clock.advance(5000)
+  await clock.advance(5000)
+  expect([...up]).toEqual([])
+  expect(opened).toEqual(['kantoku-manager kaizenくん'])
+})
+
+test('the bare command and toggle flip the panel', async ($, on) => {
+  const { up } = engine(on, 'term_manager')
+  await $.session.start(START)
+  expect([...up]).toEqual(['kantoku-manager'])
+
+  await run($, '')
+  expect([...up]).toEqual([])
+  await run($, 'toggle')
+  expect([...up]).toEqual(['kantoku-manager'])
+})
+
+test('hide stores the choice in $.state', async ($, on) => {
+  const writes: unknown[] = []
+  on('state.set', (_, e, next) => {
+    writes.push(e.value)
+
+    return next(e)
+  })
+  engine(on, 'term_manager')
+  await $.session.start(START)
+  await run($, 'hide')
+
+  expect(writes).toEqual([false])
+})
+
+test('a stored hide keeps the panel closed when the mod loads again', async ($, on) => {
+  // $.state outlives a reload, whose session.start runs again.
+  on('state.get', () => ({ value: { value: false, version: 3 } }))
+  const { opened } = engine(on, 'term_manager')
+  await $.session.start(START)
+
+  expect(opened).toEqual([])
+})
+
+test('an unknown argument says how to use the command', async ($, on) => {
+  engine(on, 'term_manager')
+  await $.session.start(START)
+
+  const ran = await run($, 'sideways')
+  expect(JSON.stringify(ran)).toContain('show')
+  expect(JSON.stringify(ran)).toContain('hide')
+})
+
+test('toggle shows a panel that is listed but not drawn', async ($, on) => {
+  const { up } = engine(on, 'term_manager', { undrawn: true })
+  await $.session.start(START)
+  expect([...up]).toEqual(['kantoku-manager'])
+
+  const ran = await run($, '')
+  expect(JSON.stringify(ran)).toContain('Opened')
+  expect([...up]).toEqual(['kantoku-manager'])
+})
+
+test('hide in a session that is no manager stores nothing', async ($, on) => {
+  const writes: unknown[] = []
+  on('state.set', (_, e, next) => {
+    writes.push(e.value)
+
+    return next(e)
+  })
+  engine(on, 'term_someone_else')
+  await $.session.start(START)
+
+  const ran = await run($, 'hide')
+  expect(JSON.stringify(ran)).toContain('not a kantoku manager')
+  expect(writes).toEqual([])
+})
+
+test('a refused show says so instead of throwing', async ($, on) => {
+  const { opened } = engine(on, 'term_manager', { refusals: 2 })
+  await $.session.start(START)
+
+  const ran = await run($, 'show')
+  expect(JSON.stringify(ran)).toContain('Could not open')
+  expect(opened).toEqual([])
 })
