@@ -282,7 +282,7 @@ The manager may not run it (SKILL.md, "The manager's role"). Candidates:
 | Orca automations | A scheduled automation that runs catch-up. | No webhook permissions. | Automations run an agent on a schedule; that is polling with an agent's cost each round. It cannot hold a long-lived forwarder. |
 | The manager, with a rule change | Add `kantoku-watch start/stop/status` to the manager's "may use" list, like `orca`. | Cheapest. | Changes a rule the user set. Only the user can choose it. |
 
-Recommendation: **a child starts it, and it stops itself.** `stop` exists for people, but the normal end is the daemon's own idle stop (no open watched PR for 10 minutes). So the manager never needs a "stop" child. A start is idempotent: if one is already running, `start` reports it and exits 0.
+Recommendation: **a child starts it, and it stops itself.** The manager cannot run `status`, so it dispatches the watch child when a row first gets a PR URL, unless a `kantoku-watch:` letter arrived in the last 10 minutes. `stop` exists for people, but the normal end is the daemon's own idle stop (no open watched PR for 10 minutes). So the manager never needs a "stop" child. A start is idempotent: if one is already running, `start` reports it and exits 0.
 
 The watch child's spec, which the manager copies into `<home>/specs/watch.md`:
 
@@ -360,7 +360,7 @@ watch/
  ├─ relays/gh-forward.ts  stage 1 relay
  ├─ run.ts             one wrapper around child processes (faked in tests)
  ├─ fixtures/          hand-written minimal webhook payloads, no real data
- └─ *.test.ts          node:test
+ └─ *.spec.ts          node:test (not *.test.ts: `claude plugin test` owns that name)
 ```
 
 Every function that runs `gh` or `orca` takes the runner from `run.ts` as a parameter, so tests pass a fake.
@@ -391,7 +391,7 @@ Every function that runs `gh` or `orca` takes the runner from `run.ts` as a para
 
 ## Testing
 
-Unit tests, `node --test watch/`:
+Unit tests, `node --test "watch/**/*.spec.ts"`:
 
 - `targets.ts`: the real template file plus English and Japanese states; PR as URL and `owner/repo#n`; missing PR column; dispatch cell with a task ID; done rows; two rows with one PR.
 - `events.ts`: one fixture per event and state (approved, changes requested, commented, comment on an issue that is not a PR, bot comment, merged, closed, check_suite, status).

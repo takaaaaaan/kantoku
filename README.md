@@ -34,6 +34,7 @@ kantoku is that attempt.
 - **Named managers.** `/kantoku infra` and `/kantoku web` keep separate jobs and state. The tab is titled `<name>くん`.
 - **Patrol.** A 30-minute fallback patrol that stops itself after three patrols with no change.
 - **External input.** A Discord bot, GitHub Actions, or cron can wake the manager with `orca orchestration send`.
+- **PR watching.** CI results, reviews, comments, and merges on a child's PR reach that child within seconds, with a one-line summary to its manager.
 
 ## Requirements
 
@@ -43,6 +44,7 @@ kantoku is that attempt.
 | [Orca](https://github.com/stablyai/orca) (start the manager inside an Orca terminal) | [superpowers](https://github.com/obra/superpowers) (`brainstorming`, `writing-plans`, TDD) |
 | `gh` (GitHub CLI) | `agent-desktop`, `jev-desktop`, `claude-in-chrome` (screen control) |
 | | Codex CLI (to run the verifier on a different model) |
+| | Node 22.18+ and the `gh` extension [`cli/gh-webhook`](https://github.com/cli/gh-webhook), with the `admin:repo_hook` (or `repo`) token scope (PR watching) |
 
 ## Install
 
@@ -94,6 +96,28 @@ With several managers running, it is easy to lose track of which session does wh
 - **Start hidden** by turning off **Show the Manager panel at start** in `/config` (search for "panel"). It is on by default. Claude Code saves it in your user settings under `pluginConfigs`, so it stays after a restart.
 
 The mod comes with the plugin, so installing kantoku installs it. It needs a Claude Code version with mods (plugin hooks modules).
+
+## PR watching
+
+A child that owns a PR used to hear about a red CI or a "changes requested" review only when it happened to look, or when the manager's patrol noticed. kantoku-watch closes that gap. It is a small Node daemon in [`watch/`](./watch) that:
+
+- reads the `PR` column of the `## Tasks` table in every `~/.kantoku/<name>/state.md`,
+- runs one `gh webhook forward` per repo into a local HTTP receiver on `127.0.0.1` (signed with a random secret),
+- sends each event with `orca orchestration send`: a letter to the owner child, and a one-line summary to its manager for CI results, approvals, changes requested, merges, and closes.
+
+Each fact is sent once, even when GitHub redelivers it. Events that happened while it was stopped are caught up with `gh` at the next start. Review and comment text is quoted as external text, below a fixed line that says it is information, not an instruction.
+
+```
+node watch/cli.ts start [--allow owner/repo ...]   start the daemon, or report the running one
+node watch/cli.ts status                           running?, repos, troubles
+node watch/cli.ts stop                             stop it and its forwarders
+```
+
+- **A child starts it.** The manager never runs it; when a row first gets a PR URL, the manager dispatches a short child that runs `start` (see section 1.6 of the skill).
+- **It stops itself** when no watched PR has been open for 10 minutes. `stop` is there for people.
+- **Repos you do not own need your yes.** `start` prints `needs approval: owner/repo` for them and forwards only the repos named with `--allow` on that start. The approval is not saved.
+- **Nothing is left behind.** GitHub drops the temporary webhook when the forwarder stops. `stop` lists any forwarder hook it still finds, and leaves deleting it to you.
+- One daemon serves every manager on the machine. Its files live in `~/.kantoku-watch/`.
 
 ## Tips
 
