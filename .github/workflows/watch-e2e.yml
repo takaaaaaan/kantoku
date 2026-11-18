@@ -1,0 +1,8 @@
+name: watch-e2e
+on: pull_request
+jobs:
+  e2e-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: test "$(cat e2e-result.txt)" = pass
