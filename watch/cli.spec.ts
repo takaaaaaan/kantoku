@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { main } from './cli.ts'
+import { main, windowsCommandLine } from './cli.ts'
 import type { CliDeps } from './cli.ts'
 import { fakeRun, json } from './testing.ts'
 import type { Answer } from './testing.ts'
@@ -84,7 +84,8 @@ test('start with a stale pid spawns a new daemon and prints its status', async (
   s.writeStatus(999_999)
   assert.equal(await main(['start', '--allow', 'Some-Org/App'], s.env, s.deps), 0)
   assert.equal(s.spawned.length, 1)
-  assert.deepEqual(s.spawned[0]?.slice(-3), ['run', '--allow', 'some-org/app'])
+  assert.equal(s.spawned[0]?.[1], 'run')
+  assert.deepEqual(s.spawned[0]?.slice(-2), ['--allow', 'some-org/app'])
   assert.match(s.out.join('\n'), /me-login\/app\s+forwarding/)
 })
 
@@ -133,4 +134,35 @@ test('unknown command prints usage and exits 1', async () => {
   assert.equal(await main(['bogus'], s.env, s.deps), 1)
   assert.match(s.out.join('\n'), /usage: node watch\/cli\.ts start/i)
   assert.equal(existsSync(join(s.home, 'secret')), false)
+})
+
+test('start hands the daemon its sender and paths as arguments', async () => {
+  const s = setup()
+  await main(['start', '--allow', 'o/r'], s.env, s.deps)
+  const args = s.spawned[0] ?? []
+  const value = (flag: string) => args[args.indexOf(flag) + 1]
+  assert.equal(value('--from'), 'term_x')
+  assert.equal(value('--home'), s.home)
+  assert.equal(value('--allow'), 'o/r')
+  assert.match(value('--state-root') ?? '', /kantoku$/)
+})
+
+test('start outside Orca passes no sender', async () => {
+  const s = setup()
+  const { ORCA_TERMINAL_HANDLE: _, ...env } = s.env
+  await main(['start'], env, s.deps)
+  assert.equal(s.spawned[0]?.includes('--from'), false)
+})
+
+test('flags are checked', async () => {
+  const s = setup()
+  assert.equal(await main(['start', '--from', 'x'], s.env, s.deps), 1, '--from is only for run')
+  assert.equal(await main(['run', '--home'], s.env, s.deps), 1)
+  assert.equal(await main(['status', '--allow', 'o/r'], s.env, s.deps), 1)
+})
+
+test('windowsCommandLine quotes every argument and refuses double quotes', () => {
+  assert.equal(windowsCommandLine('C:/node/node.exe', ['C:/a b/cli.ts', 'run', '--allow', 'o/r']), '"C:/node/node.exe" "C:/a b/cli.ts" "run" "--allow" "o/r"')
+  assert.throws(() => windowsCommandLine('node', ['a"b']))
+  assert.throws(() => windowsCommandLine('node', ['a\\']))
 })

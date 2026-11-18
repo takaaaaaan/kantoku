@@ -2,7 +2,7 @@
 // `start` launches `run` as a detached process and returns; the daemon then
 // stops itself when no watched PR is open for 10 minutes.
 
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -64,6 +64,7 @@ const realDeps: CliDeps = {
     }
   },
   spawnDaemon: (args, env) => {
+    if (process.platform === 'win32') return launchWindows(process.execPath, args)
     const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', windowsHide: true, env: env as NodeJS.ProcessEnv })
     child.unref()
 
@@ -81,35 +82,73 @@ function pathsOf(env: Env): Paths {
   }
 }
 
-function allowOf(args: string[]): string[] | undefined {
-  const allow: string[] = []
-  for (let at = 0; at < args.length; at++) {
-    if (args[at] !== '--allow') return undefined
-    const repo = args[++at]
-    if (repo === undefined || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return undefined
-    allow.push(repo.toLowerCase())
+type Flags = { allow: string[]; from?: string; home?: string; stateRoot?: string }
+
+const FLAGS_OF: Record<string, string[]> = { start: ['--allow'], run: ['--allow', '--from', '--home', '--state-root'] }
+
+function flagsOf(command: string | undefined, args: string[]): Flags | undefined {
+  const known = FLAGS_OF[command ?? ''] ?? []
+  const flags: Flags = { allow: [] }
+  for (let at = 0; at < args.length; at += 2) {
+    const [flag, value] = [args[at] ?? '', args[at + 1]]
+    if (!known.includes(flag) || value === undefined || value.startsWith('--')) return undefined
+    if (flag === '--allow') {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(value)) return undefined
+      flags.allow.push(value.toLowerCase())
+    } else if (flag === '--from') flags.from = value
+    else if (flag === '--home') flags.home = value
+    else flags.stateRoot = value
   }
 
-  return allow
+  return flags
+}
+
+// A Windows command line for CreateProcess: every argument in double quotes.
+// Arguments here are paths, repo names, and terminal handles, so a double quote
+// or a trailing backslash (which would escape the closing quote) is refused.
+export function windowsCommandLine(exe: string, args: string[]): string {
+  return [exe, ...args].map(arg => {
+    if (arg.includes('"') || arg.endsWith('\\')) throw new Error(`cannot quote argument: ${arg}`)
+
+    return `"${arg}"`
+  }).join(' ')
+}
+
+// On Windows, Orca ends every process of a worker's terminal when it releases
+// the worker, even a detached one. A process created through WMI belongs to no
+// terminal, so the daemon outlives the child that started it.
+function launchWindows(exe: string, args: string[]): number | undefined {
+  const line = windowsCommandLine(exe, args).replace(/'/g, "''")
+  const script = [
+    "$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${line}'; ProcessStartupInformation = $si }`,
+    'if ($r.ReturnValue -ne 0) { exit 1 }',
+    'Write-Output $r.ProcessId',
+  ].join('; ')
+  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8' })
+  const pid = Number(out.trim())
+
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined
 }
 
 export async function main(argv: string[], env: Env, given: Partial<CliDeps> = {}): Promise<number> {
   const deps: CliDeps = { ...realDeps, ...given }
-  const paths = pathsOf(env)
   const [command, ...rest] = argv
-  const allow = allowOf(rest)
-  const restOk = command === 'start' || command === 'run' ? allow !== undefined : rest.length === 0
-  if (!restOk || allow === undefined) {
+  const flags = flagsOf(command, rest)
+  if (flags === undefined) {
     deps.out(USAGE)
 
     return 1
   }
+  const base = pathsOf(env)
+  const paths = { home: flags.home ?? base.home, stateRoot: flags.stateRoot ?? base.stateRoot }
+  const allow = flags.allow
   switch (command) {
     case 'start': return start(paths, allow, env, deps)
     case 'stop': return stop(paths, deps)
     case 'status': return status(paths, deps)
-    case 'catchup': return catchupOnce(paths, deps)
-    case 'run': return runDaemon(paths, allow, deps)
+    case 'catchup': return catchupOnce(paths, deps, env.ORCA_TERMINAL_HANDLE)
+    case 'run': return runDaemon(paths, allow, deps, flags.from)
     default:
       deps.out(USAGE)
 
@@ -181,7 +220,16 @@ async function start(paths: Paths, allow: string[], env: Env, deps: CliDeps): Pr
 
   const childEnv = Object.fromEntries(Object.entries(env).filter(([key]) => !key.startsWith('ORCA_')))
   const cli = fileURLToPath(import.meta.url)
-  const pid = deps.spawnDaemon([cli, 'run', ...allow.flatMap(repo => ['--allow', repo])], childEnv)
+  const from = env.ORCA_TERMINAL_HANDLE
+  const args = [cli, 'run', '--home', paths.home, '--state-root', paths.stateRoot, ...(from ? ['--from', from] : []), ...allow.flatMap(repo => ['--allow', repo])]
+  let pid: number | undefined
+  try {
+    pid = deps.spawnDaemon(args, childEnv)
+  } catch (error) {
+    deps.out(`kantoku-watch: could not launch the daemon: ${String(error)}`)
+
+    return 1
+  }
   for (let waited = 0; pid !== undefined && waited <= START_WAIT_MS; waited += 250) {
     const status = await readStatus(paths)
     if (status?.pid === pid) {
@@ -239,7 +287,7 @@ async function status(paths: Paths, deps: CliDeps): Promise<number> {
   return 0
 }
 
-async function catchupOnce(paths: Paths, deps: CliDeps): Promise<number> {
+async function catchupOnce(paths: Paths, deps: CliDeps, from: string | undefined): Promise<number> {
   await mkdir(paths.home, { recursive: true })
   const now = new Date()
   const seen = await openSeen(join(paths.home, 'seen.json'))
@@ -251,7 +299,7 @@ async function catchupOnce(paths: Paths, deps: CliDeps): Promise<number> {
     if (pr === undefined || prs[key]?.closedAt !== undefined) continue
     const record = prs[key]
     for (const event of await catchUp(deps.run, pr, record !== undefined, record === undefined ? undefined : new Date(record.firstSeenAt)))
-      sent += (await sendLetters(deps.run, lettersFor(event, targets, now), seen, now)).sent
+      sent += (await sendLetters(deps.run, lettersFor(event, targets, now), seen, now, from)).sent
   }
   await seen.save()
   deps.out(`kantoku-watch: catch-up sent ${sent} letter(s)`)
@@ -259,7 +307,7 @@ async function catchupOnce(paths: Paths, deps: CliDeps): Promise<number> {
   return 0
 }
 
-async function runDaemon(paths: Paths, allow: string[], deps: CliDeps): Promise<number> {
+async function runDaemon(paths: Paths, allow: string[], deps: CliDeps, from: string | undefined): Promise<number> {
   await mkdir(paths.home, { recursive: true })
   if (!(await preflight(deps))) return 2
   const secret = await ensureSecret(paths)
@@ -279,7 +327,7 @@ async function runDaemon(paths: Paths, allow: string[], deps: CliDeps): Promise<
     onShutdown: stopNow,
   })
   const relay = ghForwardRelay({ spawn: realSpawn, run: deps.run, url: `http://127.0.0.1:${receiver.port}/webhook`, secret })
-  ctx = await createContext({ run: deps.run, relay, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(allow), port: receiver.port, now: new Date() })
+  ctx = await createContext({ run: deps.run, relay, stateRoot: paths.stateRoot, home: paths.home, allow: new Set(allow), port: receiver.port, now: new Date(), from })
   process.on('SIGINT', stopNow)
   process.on('SIGTERM', stopNow)
   await writeJson(join(paths.home, 'status.json'), statusOf(ctx, new Date()))

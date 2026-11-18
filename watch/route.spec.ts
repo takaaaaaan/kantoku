@@ -6,7 +6,7 @@ import type { WatchTarget } from './targets.ts'
 
 const pr = { repo: 'owner/repo', number: 12 }
 const target = (over: Partial<WatchTarget> = {}): WatchTarget => ({
-  pr, url: 'https://github.com/owner/repo/pull/12', manager: 'm', run: 'run_1', dispatch: 'ctx_9f1', task: 'Fix login', rowDone: false, ...over,
+  pr, url: 'https://github.com/owner/repo/pull/12', manager: 'm', run: 'run_1', terminal: 'term_m', dispatch: 'ctx_9f1', task: 'Fix login', rowDone: false, ...over,
 })
 const review = (state: 'approved' | 'changes_requested' | 'commented', body = 'Please split the parser out of …'): WatchEvent => ({
   kind: 'review', pr, id: 123, state, author: 'reviewer-login', body, url: 'https://github.com/owner/repo/pull/12#pullrequestreview-123',
@@ -27,12 +27,14 @@ test('CI failed: child letter and manager line', () => {
       'PR: https://github.com/owner/repo/pull/12',
     ].join('\n'),
     key: 'ci:owner/repo#12@1a2b3c4d5e6f7a8b:failed:lint,test-windows>child:ctx_9f1',
+    fallbackFrom: 'term_m',
   })
   assert.deepEqual(manager, {
     to: 'run:run_1',
     subject: 'kantoku-watch: owner/repo#12 (Fix login → ctx_9f1) CI failed: lint, test-windows',
     body: '',
     key: 'ci:owner/repo#12@1a2b3c4d5e6f7a8b:failed:lint,test-windows>run:run_1',
+    fallbackFrom: 'term_m',
   })
 })
 

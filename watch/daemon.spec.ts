@@ -224,3 +224,12 @@ test('records of PRs gone from state.md are dropped after 14 days', async () => 
   await tick(ctx, at(15 * 24 * 60))
   assert.equal(ctx.prs['me-login/app#1'], undefined)
 })
+
+test('letters are sent from the terminal that started the daemon', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  const ctx = await createContext({ ...(await s.make()).options, from: 'term_starter' })
+  await tick(ctx, at(0))
+  const sends = s.run.calls.filter(c => c[0] === 'orca')
+  assert.ok(sends.length > 0)
+  for (const call of sends) assert.deepEqual(call.slice(3, 5), ['--from', 'term_starter'])
+})

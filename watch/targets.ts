@@ -13,6 +13,7 @@ export type WatchTarget = {
   url: string
   manager: string
   run: string | undefined
+  terminal: string | undefined
   dispatch: string | undefined
   task: string
   rowDone: boolean
@@ -50,6 +51,7 @@ export function parsePrRef(cell: string): PrRef | undefined {
 export function parseTargets(manager: string, stateText: string): WatchTarget[] {
   const text = stateText.replace(/<!--[\s\S]*?-->/g, '')
   const run = /^run:[ \t]*(\S+)/m.exec(text)?.[1]
+  const terminal = /^terminal:[ \t]*(\S+)/m.exec(text)?.[1]
   const lines = tasksLines(text)
   const ruleAt = lines.findIndex(isRuleLine)
   const header = ruleAt > 0 && isTableLine(lines[ruleAt - 1] ?? '') ? cellsOf(lines[ruleAt - 1] ?? '') : undefined
@@ -68,7 +70,7 @@ export function parseTargets(manager: string, stateText: string): WatchTarget[] 
     const status = statusAt < 0 ? '' : (cells[statusAt] ?? '')
     const dispatch = dispatchAt < 0 ? undefined : /\bctx_[0-9a-f]+\b/i.exec(cells[dispatchAt] ?? '')?.[0]
 
-    return [{ pr, url, manager, run, dispatch, task, rowDone: isDoneStatus(status) }]
+    return [{ pr, url, manager, run, terminal, dispatch, task, rowDone: isDoneStatus(status) }]
   })
 }
 

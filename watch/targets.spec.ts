@@ -7,7 +7,7 @@ import { isDoneStatus, parsePrRef, parseTargets, prKey, readAllTargets } from '.
 
 const template = readFileSync(new URL('../skills/kantoku/templates/state.md', import.meta.url), 'utf8')
 
-const state = (rows: string, run = 'run: run_1\n') => `# x state
+const state = (rows: string, run = 'terminal: term_m1\nrun: run_1\n') => `# x state
 ${run}
 ## Tasks
 | Task | Child worktree | dispatch ID | PR | Status | Pending gate |
@@ -30,6 +30,7 @@ test('maps a row to its child and manager', () => {
     url: 'https://github.com/Owner/Repo/pull/12',
     manager: 'mgr',
     run: 'run_1',
+    terminal: 'term_m1',
     dispatch: 'ctx_9f1',
     task: 'Fix login',
     rowDone: false,
@@ -101,7 +102,7 @@ test('odd hand-written cells never throw', () => {
     '| | wt | ctx_d | o/r#4 | x | — |',
   ].join('\n')
   const targets = parseTargets('x', state(rows, ''))
-  assert.deepEqual(targets.map(t => [t.task, prKey(t.pr), t.dispatch, t.run]), [['B', 'o/r#3', undefined, undefined]])
+  assert.deepEqual(targets.map(t => [t.task, prKey(t.pr), t.dispatch, t.run, t.terminal]), [['B', 'o/r#3', undefined, undefined, undefined]])
 })
 
 test('table inside a comment is ignored', () => {

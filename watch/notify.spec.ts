@@ -45,3 +45,23 @@ test('a send that throws counts as failed', async () => {
   const seen = await openSeen(seenFile())
   assert.deepEqual(await sendLetters(run, [child], seen, new Date()), { sent: 0, failed: 1 })
 })
+
+test('sends with --from the given sender', async () => {
+  const run = fakeRun(() => ({}))
+  await sendLetters(run, [child], await openSeen(seenFile()), new Date(), 'term_start')
+  assert.deepEqual(run.calls[0]?.slice(0, 5), ['orca', 'orchestration', 'send', '--from', 'term_start'])
+})
+
+test('a refused send is tried again from the fallback sender', async () => {
+  const run = fakeRun((_cmd, args) => (args[3] === 'term_start' ? { code: 1, stderr: 'error: dispatch_run_mismatch: ...' } : {}))
+  const seen = await openSeen(seenFile())
+  assert.deepEqual(await sendLetters(run, [{ ...manager, fallbackFrom: 'term_mgr' }], seen, new Date(), 'term_start'), { sent: 1, failed: 0 })
+  assert.deepEqual(run.calls.map(c => c[4]), ['term_start', 'term_mgr'])
+  assert.equal(seen.has(manager.key), true)
+})
+
+test('with no sender at all, the fallback sender is used first', async () => {
+  const run = fakeRun(() => ({}))
+  await sendLetters(run, [{ ...manager, fallbackFrom: 'term_mgr' }], await openSeen(seenFile()), new Date())
+  assert.deepEqual(run.calls.map(c => c.slice(3, 5)), [['--from', 'term_mgr']])
+})

@@ -38,6 +38,8 @@ export type ContextOptions = {
   allow: Set<string>
   port: number
   now: Date
+  // The terminal that started the daemon; Orca needs a sender for every send.
+  from?: string
 }
 
 export type DaemonContext = {
@@ -235,7 +237,7 @@ async function report(ctx: DaemonContext, event: WatchEvent, now: Date, quiet = 
   }
   const fresh = letters.filter(letter => !ctx.seen.has(letter.key))
   if (fresh.length === 0) return
-  const result = await sendLetters(ctx.run, fresh, ctx.seen, now)
+  const result = await sendLetters(ctx.run, fresh, ctx.seen, now, ctx.options.from)
   for (const letter of fresh) await log(ctx, `${ctx.seen.has(letter.key) ? 'sent' : 'FAILED'} ${letter.to} ${letter.subject}`)
   if (result.failed > 0) await log(ctx, `${result.failed} letter(s) not sent; retried at the next trigger or catch-up`)
 }
