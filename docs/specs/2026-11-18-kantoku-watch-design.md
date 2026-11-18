@@ -423,7 +423,9 @@ Manual checks (in the plan, on a personal test repo, never an org repo): the end
 - Idle stop after 10 minutes with no open watched PR; `stop` is for people.
 - A PR reopened after its close was recorded is not watched again (`pull_request` `reopened` is not handled).
 - A letter that fails to send makes its repo be caught up again at the next tick; a close is recorded only after its letters went out.
-- One daemon per machine is enforced with `~/.kantoku-watch/daemon.lock`; `start --allow` on a running daemon restarts it, since an approval belongs to one start.
+- One daemon per machine is enforced with `~/.kantoku-watch/daemon.lock`; `start --allow` on a running daemon restarts it, since an approval belongs to one start. The daemon touches the lock every tick; a lock whose pid is dead or that was not touched for 10 minutes is stale, and only the process that creates `daemon.lock.claim` exclusively may take it over.
+- A letter that fails to send queues its repo for a catch-up at the next tick, and keeps doing so until it is sent.
+- "Running" means a live pid and either a heartbeat under 2 minutes old or a receiver that answers `POST /ping` with the secret. `stop` does not look at the heartbeat: for any live pid it asks the receiver to shut down and fails (exit 1) when the pid does not end.
 - Node 22.18+ type stripping instead of a build step.
 
 ## Left to the builder

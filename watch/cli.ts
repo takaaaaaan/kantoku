@@ -168,11 +168,36 @@ async function readStatus(paths: Paths): Promise<Status | undefined> {
 
 // Running means a live pid and a heartbeat (written every 15 s) under 2 minutes old,
 // so a pid reused by another process after a crash does not count.
+// A tick can take long (many gh calls, a sleeping PC), so an old heartbeat alone
+// does not mean stopped: the receiver is asked with the secret before giving up.
 async function running(paths: Paths, deps: CliDeps): Promise<Status | undefined> {
-  const status = await readStatus(paths)
-  const fresh = status !== undefined && Date.now() - Date.parse(status.lastAliveAt) < HEARTBEAT_MAX_MS
+  const status = await alivePid(paths, deps)
+  if (status === undefined) return undefined
+  if (Date.now() - Date.parse(status.lastAliveAt) < HEARTBEAT_MAX_MS) return status
+  const secret = await readSecret(paths)
+  if (secret === undefined) return undefined
+  try {
+    return (await deps.post(`http://127.0.0.1:${status.port}/ping`, { 'x-kantoku-watch-secret': secret })) === 204 ? status : undefined
+  } catch {
+    return undefined
+  }
+}
 
-  return status !== undefined && status.pid > 0 && fresh && deps.isAlive(status.pid) ? status : undefined
+// The pid in status.json is alive. `stop` uses this, not `running`: a live daemon with an old heartbeat must still be stopped.
+async function alivePid(paths: Paths, deps: CliDeps): Promise<Status | undefined> {
+  const status = await readStatus(paths)
+
+  return status !== undefined && status.pid > 0 && deps.isAlive(status.pid) ? status : undefined
+}
+
+async function readSecret(paths: Paths): Promise<string | undefined> {
+  try {
+    const secret = (await readFile(join(paths.home, 'secret'), 'utf8')).trim()
+
+    return /^[0-9a-f]{64}$/.test(secret) ? secret : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function printStatus(status: Status, deps: CliDeps) {
@@ -186,10 +211,8 @@ function printStatus(status: Status, deps: CliDeps) {
 
 async function ensureSecret(paths: Paths): Promise<string> {
   const file = join(paths.home, 'secret')
-  try {
-    const secret = (await readFile(file, 'utf8')).trim()
-    if (/^[0-9a-f]{64}$/.test(secret)) return secret
-  } catch {}
+  const existing = await readSecret(paths)
+  if (existing !== undefined) return existing
   await mkdir(paths.home, { recursive: true })
   const secret = randomBytes(32).toString('hex')
   await writeFile(file, secret, { mode: 0o600 })
@@ -254,7 +277,7 @@ async function start(paths: Paths, allow: string[], env: Env, deps: CliDeps): Pr
 }
 
 async function stop(paths: Paths, deps: CliDeps): Promise<number> {
-  const live = await running(paths, deps)
+  const live = await alivePid(paths, deps)
   if (live === undefined) {
     deps.out('kantoku-watch: not running')
 

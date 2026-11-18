@@ -3,7 +3,7 @@
 // deliveries come in through handleDelivery. Both paths run one at a time, so
 // a letter is never sent twice by a race between them.
 
-import { appendFile, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { appendFile, readFile, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { catchUp, ciEvent } from './catchup.ts'
 import { parseWebhook } from './events.ts'
@@ -136,7 +136,9 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
   return serial(ctx, async () => {
     await readTargets(ctx)
     const open = openPrs(ctx)
+    // This tick handles the repos queued so far. A letter that fails during the tick queues its repo again for the next one.
     const toCatchUp = new Set(ctx.toCatchUp)
+    for (const repo of toCatchUp) ctx.toCatchUp.delete(repo)
 
     const repos = [...new Set(open.map(pr => pr.repo))].sort()
     const forwarded: string[] = []
@@ -167,7 +169,6 @@ export function tick(ctx: DaemonContext, now: Date): Promise<'continue' | 'idle-
       if (ctx.prs[key] === undefined) await catchUpPr(ctx, pr, false, now)
       else if (toCatchUp.has(pr.repo) || due) await catchUpPr(ctx, pr, true, now)
     }
-    for (const repo of toCatchUp) ctx.toCatchUp.delete(repo)
     for (const repo of repos) {
       if (ctx.repos[repo] === 'polling' && now.getTime() - (ctx.lastPollAt.get(repo) ?? 0) >= POLL_MS) ctx.lastPollAt.set(repo, now.getTime())
     }
@@ -278,21 +279,65 @@ export async function catchUpOnce(ctx: DaemonContext, now: Date): Promise<void> 
   })
 }
 
-// One daemon per machine: the lock file holds the pid of the one that runs.
-export async function acquireLock(home: string, pid: number, isAlive: (pid: number) => boolean): Promise<boolean> {
-  const path = join(home, 'daemon.lock')
+// One daemon per machine: the lock file holds the pid of the one that runs, and
+// the daemon touches it every tick. A lock is stale when its pid is dead or it was
+// not touched for 10 minutes (the pid may belong to another process by then).
+// Only a successful exclusive create ever wins, and taking over a stale lock is
+// done by the one process that creates `daemon.lock.claim`, so two starts at once
+// never both run.
+const LOCK_STALE_MS = 10 * 60_000
+const CLAIM_STALE_MS = 30_000
+
+async function createOnly(path: string, pid: number): Promise<boolean> {
   try {
     await writeFile(path, String(pid), { flag: 'wx' })
 
     return true
-  } catch {}
-  try {
-    const holder = Number((await readFile(path, 'utf8')).trim())
-    if (holder !== pid && Number.isInteger(holder) && holder > 0 && isAlive(holder)) return false
-  } catch {}
-  await writeFile(path, String(pid))
+  } catch {
+    return false
+  }
+}
 
-  return true
+async function lockHolder(path: string): Promise<{ pid: number; touchedAt: number } | undefined> {
+  try {
+    const pid = Number((await readFile(path, 'utf8')).trim())
+
+    return { pid, touchedAt: (await stat(path)).mtimeMs }
+  } catch {
+    return undefined
+  }
+}
+
+export async function acquireLock(home: string, pid: number, isAlive: (pid: number) => boolean): Promise<boolean> {
+  const path = join(home, 'daemon.lock')
+  if (await createOnly(path, pid)) return true
+  const holder = await lockHolder(path)
+  if (holder?.pid === pid) return true
+  const live = holder !== undefined && Number.isInteger(holder.pid) && holder.pid > 0 && isAlive(holder.pid) && Date.now() - holder.touchedAt < LOCK_STALE_MS
+  if (live) return false
+
+  const claim = `${path}.claim`
+  const claimer = await lockHolder(claim)
+  if (claimer !== undefined && Date.now() - claimer.touchedAt > CLAIM_STALE_MS) await unlink(claim).catch(() => {})
+  if (!(await createOnly(claim, pid))) return false
+  try {
+    const again = await lockHolder(path)
+    if (again !== undefined && again.pid !== holder?.pid) return false
+    await unlink(path).catch(() => {})
+
+    return await createOnly(path, pid)
+  } finally {
+    await unlink(claim).catch(() => {})
+  }
+}
+
+async function touchLock(home: string) {
+  const path = join(home, 'daemon.lock')
+  try {
+    if (Number((await readFile(path, 'utf8')).trim()) !== process.pid) return
+    const now = new Date()
+    await utimes(path, now, now)
+  } catch {}
 }
 
 export async function releaseLock(home: string, pid: number): Promise<void> {
@@ -314,6 +359,7 @@ export function statusOf(ctx: DaemonContext, now: Date): Status {
 }
 
 async function saveAll(ctx: DaemonContext, now: Date) {
+  await touchLock(ctx.home)
   await ctx.seen.save()
   await savePrs(ctx)
   await writeJson(join(ctx.home, 'status.json'), statusOf(ctx, now))

@@ -66,3 +66,11 @@ test('other paths are 404', async () => {
     assert.equal((await fetch(`${base}/`)).status, 404)
   })
 })
+
+test('/ping answers 204 only with the secret', async () => {
+  await withReceiver(async (base, calls) => {
+    assert.equal((await post(`${base}/ping`, '', {})).status, 401)
+    assert.equal((await post(`${base}/ping`, '', { 'x-kantoku-watch-secret': secret })).status, 204)
+    assert.equal(calls.shutdowns, 0)
+  })
+})

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { acquireLock, createContext, handleDelivery, tick } from './daemon.ts'
@@ -328,4 +328,49 @@ test('acquireLock lets one daemon run', async () => {
   alive.delete(111)
   assert.equal(await acquireLock(home, 222, pid => alive.has(pid) || pid === 222), true)
   assert.equal(readFileSync(join(home, 'daemon.lock'), 'utf8').trim(), '222')
+})
+
+test('a known PR whose letter fails twice is still caught up until it is sent', async () => {
+  const s = setup(['| Fix | wt | ctx_1 | me-login/app#1 | in progress | — |'])
+  let orcaFails = 0
+  const run = fakeRun((cmd, args) => {
+    if (cmd === 'orca') return orcaFails-- > 0 ? { code: 1, stderr: 'orca down' } : {}
+    if (args[0] === 'api' && args[1] === 'user') return { stdout: 'me-login' }
+    if (args[0] === 'pr' && args[1] === 'view') return json({ state: 'OPEN', headRefOid: head, mergedBy: null })
+    if (args[0] === 'pr' && args[1] === 'checks') return json([{ name: 'b', bucket: 'pass' }])
+    if (args[0] === 'api' && args[1]?.endsWith('/comments'))
+      return json([[{ id: 77, user: { login: 'x', type: 'User' }, body: 'hi', html_url: 'u', created_at: at(0.5).toISOString() }]])
+
+    return json([[]])
+  })
+  const ctx = await createContext({ ...(await s.make()).options, run })
+  await tick(ctx, at(0))
+  orcaFails = 2
+  const comment = { action: 'created', issue: { number: 1, pull_request: {} }, comment: { id: 77, body: 'hi', html_url: 'u', user: { login: 'x', type: 'User' } }, repository: { full_name: 'me-login/app' } }
+  await handleDelivery(ctx, 'issue_comment', 'd-1', comment, at(1))
+  await tick(ctx, at(2))
+  await tick(ctx, at(3))
+  const commentSends = run.calls.filter(c => c[0] === 'orca' && String(c[8]).includes('comment by x'))
+  assert.equal(commentSends.length, 3, 'failed, failed again, then sent')
+  assert.equal(ctx.seen.has('comment:me-login/app#1:77>child:ctx_1'), true)
+})
+
+test('a stale lock taken by many at once goes to exactly one', async () => {
+  for (let round = 0; round < 20; round++) {
+    const home = mkdtempSync(join(tmpdir(), 'kw-lock-race-'))
+    writeFileSync(join(home, 'daemon.lock'), '999')
+    const isAlive = (pid: number) => pid !== 999
+    const wins = await Promise.all([111, 222, 333].map(pid => acquireLock(home, pid, isAlive)))
+    assert.equal(wins.filter(Boolean).length, 1, `round ${round}: ${wins}`)
+    const holder = Number(readFileSync(join(home, 'daemon.lock'), 'utf8').trim())
+    assert.equal([111, 222, 333][wins.indexOf(true)], holder)
+  }
+})
+
+test('a lock not refreshed for 10 minutes is stale even if its pid is alive (pid reused)', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'kw-lock-old-'))
+  writeFileSync(join(home, 'daemon.lock'), '111')
+  const old = new Date(Date.now() - 11 * 60_000)
+  utimesSync(join(home, 'daemon.lock'), old, old)
+  assert.equal(await acquireLock(home, 222, () => true), true)
 })
