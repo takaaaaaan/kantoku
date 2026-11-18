@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kantoku desk</title>
-<!-- Mockup only. All data below is made up. No external loads. -->
+<!-- Mockup only. All data below is made up. No external loads. Nothing is sent anywhere. -->
 <style>
-/* Layout: bot list on the left, one bot's reports as a chat on the right,
-   and an info sheet that slides in when you press the bot's name. */
+/* Layout: bot list on the left, one bot's conversation on the right with an
+   input at the bottom, and an info sheet (with a gear to edit) behind the name. */
 :root {
   --bg: #f2f5f7;
   --panel: #ffffff;
@@ -15,10 +15,12 @@
   --muted: #6b7a86;
   --line: #e3e9ee;
   --select: #e9f1f7;
-  --wait: #ff8a3d;
+  --wait: #e8742a;
   --wait-soft: #fff1e6;
   --work: #3aa676;
   --bubble: #ffffff;
+  --mine: #dceefb;
+  --danger: #c8443c;
   --shadow: 0 1px 2px rgba(31, 42, 51, .06), 0 4px 16px rgba(31, 42, 51, .06);
   --font: "Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -28,32 +30,30 @@
   :root:not([data-theme="light"]) {
     --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
     --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
-    --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
+    --mine: #1f3446; --danger: #ef7a72; --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
   --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
-  --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
+  --mine: #1f3446; --danger: #ef7a72; --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); }
-button { font: inherit; color: inherit; }
+button, textarea, input { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
 
 .desk { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
 
 /* ---------- left: bot list ---------- */
 .side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
-.brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 12px; font-weight: 700; font-size: 16px; }
-.brand small { color: var(--muted); font-weight: 400; font-size: 12px; }
+.brand { padding: 18px 18px 12px; font-weight: 700; font-size: 16px; }
 .bots { list-style: none; margin: 0; padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .bot-row { width: 100%; display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center;
   padding: 10px; border: 0; background: none; border-radius: 14px; text-align: left; cursor: pointer; }
-.bot-row:hover { background: var(--select); }
-.bot-row[aria-current="true"] { background: var(--select); }
+.bot-row:hover, .bot-row[aria-current="true"] { background: var(--select); }
 .bot-row .name { font-weight: 700; }
 .bot-row .say { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bot-row > div { min-width: 0; }
@@ -69,7 +69,7 @@ button { font: inherit; color: inherit; }
 .face .dot.work { background: var(--work); }
 .face .dot.wait { background: var(--wait); }
 
-/* ---------- right: chat ---------- */
+/* ---------- right: conversation ---------- */
 .main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 .head { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .head-name { border: 0; background: none; padding: 4px 10px 4px 4px; border-radius: 99px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -82,36 +82,58 @@ button { font: inherit; color: inherit; }
 .day { align-self: center; color: var(--muted); font-size: 12px; background: var(--panel); padding: 2px 12px; border-radius: 99px; border: 1px solid var(--line); }
 .msg { display: grid; grid-template-columns: 36px 1fr; gap: 10px; max-width: 640px; }
 .msg .face { width: 36px; height: 36px; }
+.msg.mine { grid-template-columns: 1fr; align-self: flex-end; max-width: 520px; }
 .bubble { background: var(--bubble); border-radius: 4px var(--r) var(--r) var(--r); padding: 10px 14px; box-shadow: var(--shadow); min-width: 0; overflow-wrap: anywhere; }
+.mine .bubble { background: var(--mine); border-radius: var(--r) 4px var(--r) var(--r); }
 .bubble time { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
 .bubble.ask { background: var(--wait-soft); }
-.bubble .tag { display: inline-block; font-size: 11px; font-weight: 700; color: var(--wait); margin-bottom: 2px; }
+.bubble .tag { display: block; font-size: 11px; font-weight: 700; color: var(--wait); }
 .bubble a { color: inherit; }
-.bubble ul { margin: 4px 0 0; padding-left: 1.2em; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.choice { border: 1.5px solid var(--wait); background: var(--panel); border-radius: 99px; padding: 6px 14px; cursor: pointer; }
+.choice.rec { background: var(--wait); color: #fff; font-weight: 700; }
+.choice:hover { filter: brightness(.96); }
+.answered { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
 
-.foot { padding: 12px 24px 16px; color: var(--muted); font-size: 12.5px; text-align: center; border-top: 1px solid var(--line); background: var(--panel); }
+.composer { display: flex; gap: 10px; align-items: flex-end; padding: 12px 24px 16px; background: var(--panel); border-top: 1px solid var(--line); }
+.composer textarea { flex: 1; min-width: 0; resize: none; border: 1.5px solid var(--line); border-radius: 16px; padding: 10px 14px; background: var(--bg); min-height: 44px; max-height: 160px; }
+.composer textarea:focus { border-color: var(--wait); outline: none; }
+.send { border: 0; background: var(--wait); color: #fff; font-weight: 700; border-radius: 99px; padding: 10px 18px; cursor: pointer; }
+.send:disabled { opacity: .45; cursor: default; }
+.hint { color: var(--muted); font-size: 11.5px; padding: 0 24px 10px; background: var(--panel); }
 
 /* ---------- info sheet ---------- */
-.sheet { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--panel); box-shadow: -8px 0 32px rgba(0,0,0,.12);
+.sheet { position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 100%); background: var(--panel); box-shadow: -8px 0 32px rgba(0,0,0,.12);
   transform: translateX(105%); transition: transform .2s ease; display: flex; flex-direction: column; z-index: 5; }
 .sheet.open { transform: none; }
 .sheet-top { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 24px 16px; position: relative; text-align: center; }
 .sheet-top h2 { margin: 6px 0 0; font-size: 18px; }
-.close { position: absolute; top: 12px; right: 12px; border: 0; background: var(--select); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+.icon-btn { position: absolute; top: 12px; border: 0; background: var(--select); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+.icon-btn.close { right: 12px; }
+.icon-btn.gear { left: 12px; }
 .sheet-body { overflow-y: auto; padding: 0 24px 24px; display: flex; flex-direction: column; gap: 20px; }
-.sec h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); letter-spacing: .06em; }
+.sec h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); letter-spacing: .06em; display: flex; justify-content: space-between; align-items: center; }
 .sec p { margin: 0; }
 .sec ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.sec li { background: var(--bg); border-radius: 12px; padding: 8px 12px; }
+.sec li { background: var(--bg); border-radius: 12px; padding: 8px 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
 .sec li small { display: block; color: var(--muted); font-size: 11.5px; }
 .nots { margin-top: 8px; color: var(--muted); }
 .nots b { color: var(--ink); }
 .chip { display: inline-block; font-family: var(--mono); font-size: 12px; background: var(--select); border-radius: 8px; padding: 2px 8px; margin: 0 4px 4px 0; }
-.shared { color: var(--muted); font-size: 11.5px; }
+.shared { color: var(--muted); font-size: 11.5px; font-weight: 400; letter-spacing: 0; }
+.mini { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+.mini:hover { background: var(--select); color: var(--ink); }
+.mini.del:hover { color: var(--danger); }
+.edit textarea, .edit input { width: 100%; border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--bg); resize: vertical; }
+.edit label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.edit-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.btn { border: 1.5px solid var(--line); background: var(--panel); border-radius: 99px; padding: 6px 14px; cursor: pointer; }
+.btn.primary { background: var(--wait); border-color: var(--wait); color: #fff; font-weight: 700; }
+.note { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.2); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 4; }
 .scrim.open { opacity: 1; pointer-events: auto; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-size: 13px; z-index: 9; }
 
-/* working dots */
 .typing { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 4px; }
 .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--work); animation: hop 1.2s infinite; }
 .typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
@@ -130,7 +152,7 @@ button { font: inherit; color: inherit; }
 <body>
 <div class="desk">
   <aside class="side">
-    <div class="brand">kantoku desk <small>読むだけ</small></div>
+    <div class="brand">kantoku desk</div>
     <ul class="bots" id="bots"></ul>
     <div class="side-foot">このPCの中だけで開いています</div>
   </aside>
@@ -141,155 +163,230 @@ button { font: inherit; color: inherit; }
       <span class="state" id="headState"></span>
     </header>
     <section class="chat" id="chat" aria-live="polite"></section>
-    <div class="foot">返事はいつもどおり、<span id="footName"></span> のチャットで伝えてね。</div>
+    <form class="composer" id="composer">
+      <label for="say" hidden>メッセージ</label>
+      <textarea id="say" rows="1" placeholder="話しかける…"></textarea>
+      <button class="send" id="sendBtn" type="submit" disabled>送る</button>
+    </form>
+    <div class="hint" id="hint">Enter で送る ・ Shift+Enter で改行</div>
   </main>
 </div>
 
 <div class="scrim" id="scrim"></div>
 <aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetName">
   <div class="sheet-top">
-    <button class="close" id="close" aria-label="閉じる">✕</button>
+    <button class="icon-btn gear" id="gear" aria-label="説明を編集">⚙</button>
+    <button class="icon-btn close" id="close" aria-label="閉じる">✕</button>
     <span id="sheetFace"></span>
     <h2 id="sheetName"></h2>
     <span class="state" id="sheetState"></span>
   </div>
   <div class="sheet-body">
-    <div class="sec"><h3>説明</h3><p id="desc"></p><p class="nots" id="nots"></p></div>
+    <div class="sec" id="descSec"></div>
     <div class="sec"><h3>覚えていること</h3><ul id="memory"></ul></div>
     <div class="sec"><h3>ルーティン</h3><ul id="routines"></ul></div>
-    <div class="sec"><h3>スキル <span class="shared">みんなで共有</span></h3><div id="skills"></div></div>
+    <div class="sec"><h3><span>スキル <span class="shared">みんなで共有</span></span></h3><div id="skills"></div></div>
   </div>
 </aside>
 
 <script>
-// Dummy data. In the real desk this comes from ~/.kantoku/<name>/ (read only).
+// Dummy data. In the real desk this comes from ~/.kantoku/<name>/.
 const BOTS = [
   {
-    name: "Mochi", color: "#f7a8b8", mood: "smile", status: "wait", say: "PR を出す前に見てほしいな",
+    name: "Mochi", color: "#f7a8b8", status: "wait", say: "PR を出す前に見てほしいな",
     desc: "Web アプリの issue を進めて、PR を出すところまで面倒を見ます。検証役が合格を出してから merge します。",
-    nots: "本番への反映と、新しい issue を立てること。",
-    memory: [
-      ["main に merge すると自動で本番に出る", "11/12"],
-      ["E2E テストは夜だけ回す決まり", "11/15"],
-      ["ログイン画面の文言はデザイナーさんが決める", "11/17"],
-    ],
+    nots: ["本番への反映", "新しい issue を立てること"],
+    memory: [["main に merge すると自動で本番に出る", "11/12"], ["E2E テストは夜だけ回す決まり", "11/15"], ["ログイン画面の文言はデザイナーさんが決める", "11/17"]],
     routines: [["朝の見回り", "平日 8:44", "止まっている子がいないか見る。何も無ければ黙る"]],
-    reports: [
-      ["11/18", "21:02", "info", "検索の並び替え(#128)ができました。検証役も合格です。<br>PR: <a href='#'>#131</a>"],
-      ["11/18", "21:40", "ask", "PR を出す前に手元で試してほしいです。試し方はチャットに書きました。"],
+    talk: [
+      { day: "11/18", t: "21:02", from: "bot", text: "検索の並び替え(#128)ができました。検証役も合格です。" },
+      { day: "11/18", t: "21:20", from: "me", text: "ありがとう。並び替えの初期値は新しい順にしておいて", sent: "届けました" },
+      { day: "11/18", t: "21:40", from: "bot", ask: true, text: "PR を出す前に、どこで試しますか?",
+        choices: [["手元で試す", true], ["ステージングで試す", false], ["試さずに出す", false]] },
     ],
   },
   {
-    name: "Pico", color: "#f5d06b", mood: "focus", status: "work", say: "テストを直しているところ",
+    name: "Pico", color: "#f5d06b", status: "work", say: "テストを直しているところ",
     desc: "kantoku そのものを良くする係です。使っていて困ったことを集めて、手順書とひな形を直します。",
-    nots: "LICENSE の変更と、リリースのお知らせ。",
-    memory: [
-      ["push のたびに版の番号を上げる", "11/18"],
-      ["PR の前にユーザーが手元で試す", "11/18"],
-    ],
-    routines: [
-      ["困りごと探し", "平日 8:44", "最近のやり取りから、同じ直しのくり返しを探す"],
-      ["ルーティン点検", "月曜 8:49", "見回りの無駄が無いか見る"],
-    ],
-    reports: [
-      ["11/17", "18:20", "info", "パネルの出し入れができるようになりました(v0.3.1)。"],
-      ["11/18", "10:05", "info", "GUI の下調べが終わりました。案は3つ、おすすめは「デスク」です。"],
-      ["11/18", "22:30", "info", "通知の受け口を作り直しています。終わったら知らせます。"],
+    nots: ["LICENSE の変更", "リリースのお知らせ"],
+    memory: [["push のたびに版の番号を上げる", "11/18"], ["PR の前にユーザーが手元で試す", "11/18"]],
+    routines: [["困りごと探し", "平日 8:44", "最近のやり取りから、同じ直しのくり返しを探す"], ["ルーティン点検", "月曜 8:49", "見回りの無駄が無いか見る"]],
+    talk: [
+      { day: "11/17", t: "18:20", from: "bot", text: "パネルの出し入れができるようになりました(v0.3.1)。" },
+      { day: "11/18", t: "10:05", from: "bot", text: "GUI の下調べが終わりました。案は3つ、おすすめは「デスク」です。" },
+      { day: "11/18", t: "10:30", from: "me", text: "デスクでいこう。シンプルにね", sent: "届けました" },
+      { day: "11/18", t: "22:30", from: "bot", text: "通知の受け口を作り直しています。終わったら知らせます。" },
     ],
   },
   {
-    name: "Sora", color: "#8ec5f0", mood: "sleep", status: "sleep", say: "おやすみ中",
+    name: "Sora", color: "#8ec5f0", status: "sleep", say: "おやすみ中",
     desc: "共有ドライブの整理を手伝います。調べてまとめるまでが仕事です。",
-    nots: "ファイルの削除と、権限を変えること。",
+    nots: ["ファイルの削除", "権限を変えること"],
     memory: [["共有の設定はドライブごとに違う", "11/16"]],
     routines: [],
-    reports: [
-      ["11/16", "16:40", "info", "共有ドライブの棚卸しが終わりました。気になる点が5つあります。"],
-    ],
+    talk: [{ day: "11/16", t: "16:40", from: "bot", text: "共有ドライブの棚卸しが終わりました。気になる点が5つあります。" }],
   },
 ];
 const SKILLS = ["writing-plans", "unslop", "architect", "make-bot-ui"];
 const STATUS = { work: "作業中", wait: "あなた待ち", sleep: "おやすみ中" };
+const MOOD = { wait: "smile", work: "focus", sleep: "sleep" };
 
-// Faces: one round blob, eyes and mouth change with the mood.
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const SVG = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) { const e = document.createElementNS(SVG, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+// Faces: one round blob; eyes and mouth follow the status.
 function face(bot, big) {
-  const eyes = bot.mood === "sleep"
-    ? '<path d="M14 21q3 2 6 0M28 21q3 2 6 0" stroke="#1f2a33" stroke-width="2" fill="none" stroke-linecap="round"/>'
-    : '<circle cx="17" cy="21" r="2.6" fill="#1f2a33"/><circle cx="31" cy="21" r="2.6" fill="#1f2a33"/>';
-  const mouth = bot.mood === "smile"
-    ? '<path d="M19 29q5 5 10 0" stroke="#1f2a33" stroke-width="2" fill="none" stroke-linecap="round"/>'
-    : bot.mood === "focus" ? '<path d="M21 30h6" stroke="#1f2a33" stroke-width="2" stroke-linecap="round"/>'
-    : '<circle cx="24" cy="30" r="1.8" fill="#1f2a33"/>';
-  const span = document.createElement("span");
-  span.className = "face" + (big ? " big" : "");
+  const span = el("span", "face" + (big ? " big" : ""));
   span.style.setProperty("--c", bot.color);
-  span.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="12" cy="27" rx="3" ry="2" fill="#fff" opacity=".5"/><ellipse cx="36" cy="27" rx="3" ry="2" fill="#fff" opacity=".5"/>'
-    + eyes + mouth + '</svg><span class="dot ' + bot.status + '"></span>';
+  const s = svgEl("svg", { viewBox: "0 0 48 48", "aria-hidden": "true" });
+  const ink = { stroke: "#1f2a33", "stroke-width": "2", fill: "none", "stroke-linecap": "round" };
+  s.append(svgEl("ellipse", { cx: 12, cy: 27, rx: 3, ry: 2, fill: "#fff", opacity: ".5" }), svgEl("ellipse", { cx: 36, cy: 27, rx: 3, ry: 2, fill: "#fff", opacity: ".5" }));
+  const mood = MOOD[bot.status];
+  if (mood === "sleep") s.append(svgEl("path", { d: "M14 21q3 2 6 0M28 21q3 2 6 0", ...ink }));
+  else s.append(svgEl("circle", { cx: 17, cy: 21, r: 2.6, fill: "#1f2a33" }), svgEl("circle", { cx: 31, cy: 21, r: 2.6, fill: "#1f2a33" }));
+  if (mood === "smile") s.append(svgEl("path", { d: "M19 29q5 5 10 0", ...ink }));
+  else if (mood === "focus") s.append(svgEl("path", { d: "M21 30h6", ...ink }));
+  else s.append(svgEl("circle", { cx: 24, cy: 30, r: 1.8, fill: "#1f2a33" }));
+  span.append(s, el("span", "dot " + bot.status));
   return span;
 }
+function toast(text) { const t = el("div", "toast", text); document.body.append(t); setTimeout(() => t.remove(), 2200); }
+function now() { const d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
 
-// Text from files always goes in with textContent (escaped). The few links in
-// the dummy reports stand in for the markdown links the real desk renders safely.
-function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+let current = 0, editing = false;
+const bot = () => BOTS[current];
 
-let current = 0;
 function renderList() {
   const ul = document.getElementById("bots"); ul.textContent = "";
   BOTS.forEach((b, i) => {
-    const li = el("li"); const btn = el("button", "bot-row");
+    const li = el("li"), btn = el("button", "bot-row");
     btn.setAttribute("aria-current", i === current ? "true" : "false");
-    btn.append(face(b));
-    const mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say)); btn.append(mid);
-    if (b.status === "wait") btn.append(el("span", "wait-pill", "あなた待ち")); else btn.append(el("span"));
-    btn.onclick = () => { current = i; renderAll(); };
+    const mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say));
+    btn.append(face(b), mid, b.status === "wait" ? el("span", "wait-pill", "あなた待ち") : el("span"));
+    btn.onclick = () => { current = i; editing = false; renderAll(); };
     li.append(btn); ul.append(li);
   });
 }
 function stateLabel(b, target) {
   target.textContent = STATUS[b.status];
-  if (b.status === "work") { const t = el("span", "typing"); t.innerHTML = "<i></i><i></i><i></i>"; target.append(t); }
+  if (b.status === "work") { const t = el("span", "typing"); t.append(el("i"), el("i"), el("i")); target.append(t); }
 }
+
+function answer(item, label) {
+  item.answered = label;
+  const b = bot();
+  b.talk.push({ day: item.day, t: now(), from: "me", text: label, sent: "届けました" });
+  if (!b.talk.some(x => x.ask && !x.answered)) { b.status = "work"; b.say = "続きから作業中"; }
+  renderAll(); toast("答えを " + b.name + " に届けました");
+}
+
 function renderChat() {
-  const b = BOTS[current];
+  const b = bot();
   const hn = document.getElementById("headName"); hn.textContent = "";
   hn.append(face(b), el("strong", null, b.name), el("span", "chev", "▸ 情報"));
   stateLabel(b, document.getElementById("headState"));
-  document.getElementById("footName").textContent = b.name;
+  document.getElementById("say").placeholder = b.name + " に話しかける…";
   const chat = document.getElementById("chat"); chat.textContent = "";
   let day = "";
-  b.reports.forEach(([d, t, kind, html]) => {
-    if (d !== day) { chat.append(el("div", "day", d)); day = d; }
-    const m = el("div", "msg"); m.append(face(b));
-    const bub = el("div", "bubble" + (kind === "ask" ? " ask" : ""));
-    if (kind === "ask") bub.append(el("span", "tag", "あなたに聞きたいこと"), document.createElement("br"));
-    const body = el("span"); body.innerHTML = html; bub.append(body, el("time", null, t));
-    m.append(bub); chat.append(m);
+  b.talk.forEach(item => {
+    if (item.day !== day) { chat.append(el("div", "day", item.day)); day = item.day; }
+    if (item.from === "me") {
+      const m = el("div", "msg mine"), bub = el("div", "bubble");
+      bub.append(el("span", null, item.text), el("time", null, item.t + " ・ " + item.sent));
+      m.append(bub); chat.append(m); return;
+    }
+    const m = el("div", "msg"), bub = el("div", "bubble" + (item.ask ? " ask" : ""));
+    if (item.ask) bub.append(el("span", "tag", "あなたに聞きたいこと"));
+    bub.append(el("span", null, item.text));
+    if (item.ask && !item.answered) {
+      const row = el("div", "choices");
+      item.choices.forEach(([label, rec]) => {
+        const c = el("button", "choice" + (rec ? " rec" : ""), label + (rec ? "(おすすめ)" : ""));
+        c.onclick = () => answer(item, label); row.append(c);
+      });
+      const own = el("button", "choice", "自分で書く");
+      own.onclick = () => { const t = document.getElementById("say"); t.focus(); t.placeholder = "答えを書く…"; t.dataset.answerFor = b.talk.indexOf(item); };
+      row.append(own); bub.append(row);
+    }
+    if (item.ask && item.answered) bub.append(el("div", "answered", "答えた: " + item.answered));
+    bub.append(el("time", null, item.t));
+    m.append(face(b), bub); chat.append(m);
   });
   chat.scrollTop = chat.scrollHeight;
 }
+
 function renderSheet() {
-  const b = BOTS[current];
+  const b = bot();
   const f = document.getElementById("sheetFace"); f.textContent = ""; f.append(face(b, true));
   document.getElementById("sheetName").textContent = b.name;
   stateLabel(b, document.getElementById("sheetState"));
-  document.getElementById("desc").textContent = b.desc;
-  const n = document.getElementById("nots"); n.textContent = ""; n.append(el("b", null, "やらないこと: "), b.nots);
+  const sec = document.getElementById("descSec"); sec.textContent = "";
+  if (!editing) {
+    sec.append(el("h3", null, "説明"), el("p", null, b.desc));
+    const n = el("p", "nots"); n.append(el("b", null, "やらないこと: "), b.nots.join("、")); sec.append(n);
+  } else {
+    const form = el("form", "edit");
+    const l1 = el("label", null, "説明(役割をひと段落で)"); l1.htmlFor = "editDesc";
+    const t1 = el("textarea"); t1.id = "editDesc"; t1.rows = 5; t1.value = b.desc;
+    const l2 = el("label", null, "やらないこと(1行に1つ)"); l2.htmlFor = "editNots";
+    const t2 = el("textarea"); t2.id = "editNots"; t2.rows = 3; t2.value = b.nots.join("\n");
+    const row = el("div", "edit-row"), cancel = el("button", "btn", "やめる"), save = el("button", "btn primary", "保存");
+    cancel.type = "button"; cancel.onclick = () => { editing = false; renderSheet(); };
+    save.type = "submit";
+    form.onsubmit = e => {
+      e.preventDefault();
+      b.desc = t1.value.trim(); b.nots = t2.value.split("\n").map(s => s.trim()).filter(Boolean);
+      editing = false; renderSheet(); toast("保存しました。" + b.name + " にも知らせました");
+    };
+    row.append(cancel, save);
+    form.append(el("h3", null, "説明を編集"), l1, t1, l2, t2, row, el("p", "note", "保存の前に今の内容を控えに取ります。"));
+    sec.append(form);
+  }
   const mem = document.getElementById("memory"); mem.textContent = "";
-  b.memory.forEach(([fact, when]) => { const li = el("li", null, fact); li.append(el("small", null, when + " に覚えた")); mem.append(li); });
+  b.memory.forEach(([fact, when], i) => {
+    const li = el("li"), txt = el("div", null, fact); txt.append(el("small", null, when + " に覚えた"));
+    const del = el("button", "mini del", "忘れて"); del.title = "この記憶を消す";
+    del.onclick = () => { b.memory.splice(i, 1); renderSheet(); toast("消しました(控えは残してあります)"); };
+    li.append(txt, del); mem.append(li);
+  });
+  if (!b.memory.length) mem.append(el("li", null, "まだありません"));
   const r = document.getElementById("routines"); r.textContent = "";
   if (!b.routines.length) r.append(el("li", null, "まだありません"));
-  b.routines.forEach(([name, when, what]) => { const li = el("li", null, name + " ・ " + when); li.append(el("small", null, what)); r.append(li); });
+  b.routines.forEach(([name, when, what]) => {
+    const li = el("li"), txt = el("div", null, name + " ・ " + when); txt.append(el("small", null, what));
+    const ask = el("button", "mini", "止めてと頼む");
+    ask.onclick = () => { b.talk.push({ day: "11/19", t: now(), from: "me", text: "ルーティン「" + name + "」を止めて", sent: "届けました" }); renderChat(); toast(b.name + " に頼みました"); };
+    li.append(txt, ask); r.append(li);
+  });
   const s = document.getElementById("skills"); s.textContent = "";
   SKILLS.forEach(k => s.append(el("span", "chip", k)));
 }
 function renderAll() { renderList(); renderChat(); renderSheet(); }
 
+// Composer
+const say = document.getElementById("say"), sendBtn = document.getElementById("sendBtn");
+say.addEventListener("input", () => { sendBtn.disabled = !say.value.trim(); say.style.height = "auto"; say.style.height = say.scrollHeight + "px"; });
+say.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); document.getElementById("composer").requestSubmit(); } });
+document.getElementById("composer").addEventListener("submit", e => {
+  e.preventDefault();
+  const text = say.value.trim(); if (!text) return;
+  const b = bot(), forIdx = say.dataset.answerFor;
+  if (forIdx != null && b.talk[forIdx]) { delete say.dataset.answerFor; say.value = ""; sendBtn.disabled = true; answer(b.talk[forIdx], text); return; }
+  const asleep = b.status === "sleep";
+  b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: asleep ? "起きたら読みます" : "届けました" });
+  say.value = ""; say.style.height = "auto"; sendBtn.disabled = true;
+  renderChat(); toast(asleep ? b.name + " は眠っています。起きたら読みます" : b.name + " に届けました");
+});
+
+// Info sheet
 const sheet = document.getElementById("sheet"), scrim = document.getElementById("scrim");
-function openSheet(on) { sheet.classList.toggle("open", on); scrim.classList.toggle("open", on); if (on) document.getElementById("close").focus(); }
+function openSheet(on) { sheet.classList.toggle("open", on); scrim.classList.toggle("open", on); if (!on) { editing = false; renderSheet(); } else document.getElementById("close").focus(); }
 document.getElementById("headName").onclick = () => openSheet(true);
 document.getElementById("close").onclick = () => openSheet(false);
+document.getElementById("gear").onclick = () => { editing = !editing; renderSheet(); };
 scrim.onclick = () => openSheet(false);
-document.addEventListener("keydown", e => { if (e.key === "Escape") openSheet(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && sheet.classList.contains("open")) openSheet(false); });
 renderAll();
 </script>
 </body>
