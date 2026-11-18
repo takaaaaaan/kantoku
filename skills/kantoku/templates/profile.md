@@ -1,44 +1,44 @@
-# <名前> の担当
+# Duties of <name>
 
-<!-- /kantoku <名前> の初回起動で ~/.kantoku/<名前>/profile.md に写して埋める。
-     マネージャーは、ここが埋まるまで子を立てない。 -->
+<!-- On the first `/kantoku <name>` startup, copy this to ~/.kantoku/<name>/profile.md and fill it in.
+     The manager starts no child until this is filled in. -->
 
-## 担当業務
-<!-- このマネージャーに任せる仕事を1〜3文で。例: 「Web アプリ X の issue を進める」 -->
+## Duties
+<!-- The work given to this manager, in 1 to 3 sentences. Example: "Move the issues of web app X forward" -->
 
-## 対象リポ(Orca の repoId)
-<!-- repoId は `orca repo list --json` で引ける -->
-| リポ | パス | repoId | テスト |
+## Target repos (Orca repoId)
+<!-- Look up repoId with `orca repo list --json` -->
+| Repo | Path | repoId | Tests |
 |---|---|---|---|
 | | | | |
 
-## 受付
-- タスクの出どころ: <!-- 例: GitHub issue(`gh issue view <番号> -R <owner>/<repo>`) -->
-- 起票のしかた: <!-- 例: 使う issue 作成 skill。起票はユーザー確認が必須 -->
-- 子の worktree 名: `<repo>-<issue番号>-<短い名前>`
+## Intake
+- Task source: <!-- Example: GitHub issue (`gh issue view <number> -R <owner>/<repo>`) -->
+- How to file: <!-- Example: the issue-creation skill to use. Filing always needs user confirmation -->
+- Child worktree name: `<repo>-<issue-number>-<short-name>`
 
-## 追加 skill(子の spec に足す)
-<!-- 例: issue・PR の運用 skill、リポ固有のルール skill -->
+## Extra skills (added to child specs)
+<!-- Example: an issue and PR workflow skill, a repo-specific rules skill -->
 
-## 自律度
-- 外への書き込み: auto <!-- auto | ask。自分のブランチへの push・PR の作成と更新・issue のコメント・チャット投稿 -->
-- merge: after-verifier <!-- after-verifier | never。リポのルールが「エージェントは merge しない」なら never -->
+## Autonomy
+- External writes: auto <!-- auto | ask. Push to its own branch, create and update PRs, comment on issues, post to chat -->
+- merge: after-verifier <!-- after-verifier | never. If the repo rules say "agents do not merge", use never -->
 
-## 必ず ask する一覧
-<!-- SKILL.md の「いつでも C」に加えて、この仕事で必ず人に聞く操作。例: 本番環境への反映、権限の変更、新しい issue の起票 -->
+## Always-ask list
+<!-- On top of "Always C" in SKILL.md, the operations this work always asks a human about. Example: releasing to production, changing permissions, filing a new issue -->
 
-## ブラウザのアカウント(claude-in-chrome で使う)
-<!-- サイトごとに、どの Chrome プロファイル・どのアカウントで操作するか。分からない欄は空でよい(初回にマネージャーが確かめて埋める) -->
-| サイト | Chrome プロファイル | アカウント |
+## Browser accounts (used with claude-in-chrome)
+<!-- For each site, which Chrome profile and which account to operate with. Unknown cells may stay empty (the manager checks and fills them in the first time) -->
+| Site | Chrome profile | Account |
 |---|---|---|
 | | | |
 
-## 外からの入力(待ち列に入れてよいもの)
-<!-- orca orchestration send で届く手紙のうち、ユーザーに聞かずにタスクにしてよい出どころと種類。ここに無いものはユーザー待ちの列へ -->
-| 出どころ | 種類 | 扱い |
+## External input (what may go into the queue)
+<!-- Of the letters that arrive by orca orchestration send, the sources and kinds that may become tasks without asking the user. Anything not listed here goes to the user queue -->
+| Source | Kind | Handling |
 |---|---|---|
-| (例)チャットの #requests チャンネル | 設定変更の依頼 | 待ち列に入れる |
-| (例)GitHub Actions | CI 失敗の通知 | 待ち列に入れる(原因調査の子を配る) |
+| (Example) chat #requests channel | Config change requests | Put in the queue |
+| (Example) GitHub Actions | CI failure notices | Put in the queue (dispatch a child to find the cause) |
 
-## 言語
-<!-- 例: チャットは日本語。コミットメッセージと PR は英語 -->
+## Language
+<!-- Example: chat in Japanese. Commit messages and PRs in English -->

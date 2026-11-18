@@ -74,7 +74,7 @@ All state lives in files under `~/.kantoku/<name>/`, so the manager resumes wher
 ## Tips
 
 - Turn on auto-compact in `/config`, so the manager keeps working when its context fills up.
-- The skill itself is [`skills/kantoku/SKILL.md`](./skills/kantoku/SKILL.md). It is currently written in Japanese.
+- The skill itself is [`skills/kantoku/SKILL.md`](./skills/kantoku/SKILL.md).
 
 ## License
 
