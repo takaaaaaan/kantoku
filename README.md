@@ -71,6 +71,29 @@ All state lives in files under `~/.kantoku/<name>/`, so the manager resumes wher
  └─ specs/         specs handed to children
 ```
 
+## Manager panel
+
+With several managers running, it is easy to lose track of which session does what. kantoku ships a Claude Code mod that docks a panel beside the chat of a manager session:
+
+```
+┌ chat ──────────────┬──────────────────────────────┐
+│                    │ infraくん                    │
+│  ...               │ Keep the infra repos healthy.│
+│                    │ writes: auto · merge: never  │
+│                    │                              │
+│                    │ □ Rotate keys (in progress)  │
+│                    │ □ Bump the chart (queued)    │
+│                    │ ☑ Fix the CI cache           │
+└────────────────────┴──────────────────────────────┘
+```
+
+- **Only in manager sessions.** The panel opens when a `~/.kantoku/<name>/state.md` names this session's `$ORCA_TERMINAL_HANDLE` on its `terminal:` line, which the manager writes at startup. Other sessions get no panel.
+- **What it shows.** The manager's name, the first sentence of its duties and its autonomy from `profile.md`, then the `## Tasks` table and `## Queue` from `state.md` as a todo list. Open tasks come first, then the queue, then what is done.
+- **Live.** It rereads both files every 5 seconds, so it follows the manager as it works. It never writes to them.
+- **Reopen it** with `/kantoku-panel` after closing it. The terminal docks a pane on its own only when it is at least 144 columns wide; `/kantoku-panel` opens it at any width.
+
+The mod comes with the plugin, so installing kantoku installs it. It needs a Claude Code version with mods (plugin hooks modules).
+
 ## Tips
 
 - Turn on auto-compact in `/config`, so the manager keeps working when its context fills up.

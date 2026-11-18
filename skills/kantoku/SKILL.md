@@ -55,6 +55,7 @@ Below, `<home>` = `~/.kantoku/<name>/`.
    - The source of the manager approach is pstack `poteto-mode/playbooks/orchestrate.md`. This skill already includes the parts it needs, so **do not read it every time**. Read it for reference only when unsure how to manage. Where it differs from kantoku, kantoku wins: children are Orca child sessions, the patrol loop is a backup, and relaying with `send` / `reply` is allowed.
 4. Read `<home>`. Create it if missing. It lives outside the repo, so `git clean` and similar commands do not delete it:
    - If `profile.md` is missing, copy `templates/profile.md` (inside this skill) and fill in the duties, target repos, and always-ask list with the user. **Start no child until the profile is filled in.**
+   - If `state.md` is missing, copy `templates/state.md`. Keep its `## Tasks` table (with the Status column) and `## Queue` headings: the manager panel reads them.
    - **Write all state to `state.md` and `decisions.md`.** If the conversation is summarized or the session crashes, reading these files lets the manager resume where it left off.
      Whenever something is decided, dispatched, or finished, update one line on the spot. Write it so that applying the same update twice gives the same result.
    - If `state.md` has a Run ID, resume watching with `orca orchestration run-use`.
