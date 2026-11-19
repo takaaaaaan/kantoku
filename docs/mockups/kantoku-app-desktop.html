@@ -5,514 +5,581 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kantoku bot desktop</title>
 <!-- Mockup only. All data below is made up. No external loads. Nothing is sent anywhere.
-     The installed desktop app: its own window, a bot list with filter pills, one conversation,
-     a question card that folds away once answered, a secret card and its phone record,
-     an info panel with folding sections, and an OS notification preview. -->
+     The installed desktop app: one bot list, one conversation, a "new bot" dialog where each
+     manager gets its own shape and color, an info panel, phones, and an OS notification preview. -->
 <style>
+/* ---------- tokens (4px spacing; radius 10 / 16 / 24 / 32; elevation 0-3) ---------- */
 :root {
-  --bg-1: #fdf2f6; --bg-2: #eef4ff; --bg-3: #fff6e8;
-  --blob-a: #ffc4d6; --blob-b: #bfdcff; --blob-c: #ffe1a8;
-  --glass: rgba(255, 255, 255, .62);
-  --glass-strong: rgba(255, 255, 255, .86);
-  --glass-line: rgba(255, 255, 255, .9);
-  --ink: #1d2433; --muted: #6f7a8c; --line: rgba(29, 36, 51, .08);
-  --accent: #ff7a45; --accent-2: #ff4f8b; --accent-soft: rgba(255, 122, 69, .12);
-  --work: #22b07d; --lock: #7c6cf0; --lock-soft: rgba(124, 108, 240, .12);
-  --mine: linear-gradient(135deg, #6a8dff, #8f7bff);
-  --shadow: 0 1px 2px rgba(29, 36, 51, .05), 0 12px 32px rgba(29, 36, 51, .08);
-  --shadow-lift: 0 2px 4px rgba(29, 36, 51, .06), 0 18px 40px rgba(29, 36, 51, .14);
+  --bg: #f4f5f8; --bg-blob-a: #ffd9e4; --bg-blob-b: #d6e6ff; --bg-blob-c: #ffeccc;
+  --surface: #ffffff; --surface-2: #f6f7fa; --surface-glass: rgba(255,255,255,.72);
+  --border: #e6e8ef; --border-strong: #cfd4e0;
+  --text: #15192a; --text-2: #3a4258; --muted: #727b90;
+  --primary: #15192a; --accent: #ff6a3d; --accent-2: #ff3d7f; --accent-soft: color-mix(in srgb, #ff6a3d 12%, transparent);
+  --ok: #1a9e6a; --warn: #d98a0b; --danger: #d6385a; --lock: #7c5cff; --lock-soft: color-mix(in srgb, #7c5cff 12%, transparent);
+  --mine: linear-gradient(135deg, #3e63dd, #7c5cff);
+  --e1: 0 1px 2px rgba(21,25,42,.05), 0 4px 14px -6px rgba(21,25,42,.10);
+  --e2: 0 2px 4px rgba(21,25,42,.06), 0 14px 32px -12px rgba(21,25,42,.22);
+  --e3: 0 4px 8px rgba(21,25,42,.08), 0 30px 70px -20px rgba(21,25,42,.35);
+  --r-sm: 10px; --r: 16px; --r-lg: 24px; --r-xl: 32px;
   --font: "Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --spring: cubic-bezier(.34, 1.56, .64, 1);
-  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease: cubic-bezier(.22, 1, .36, 1); --spring: cubic-bezier(.34, 1.56, .64, 1);
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg-1: #0f1220; --bg-2: #121a2c; --bg-3: #1a1324;
-    --blob-a: #6b2a4d; --blob-b: #23406e; --blob-c: #5a3d16;
-    --glass: rgba(26, 31, 48, .62); --glass-strong: rgba(30, 36, 56, .9); --glass-line: rgba(255, 255, 255, .08);
-    --ink: #eef1f7; --muted: #9aa5b8; --line: rgba(255, 255, 255, .08);
-    --accent-soft: rgba(255, 122, 69, .18); --lock-soft: rgba(124, 108, 240, .2);
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35); --shadow-lift: 0 18px 40px rgba(0,0,0,.45);
-    color-scheme: dark;
-  }
-}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1020; --bg-blob-a: #4a1d36; --bg-blob-b: #1a2f5c; --bg-blob-c: #43300f;
+  --surface: #141a2e; --surface-2: #1a2139; --surface-glass: rgba(20,26,46,.72);
+  --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.16);
+  --text: #eef1f8; --text-2: #c4cbe0; --muted: #8b95ae; --primary: #eef1f8;
+  --e1: 0 0 0 1px rgba(255,255,255,.04); --e2: 0 0 0 1px rgba(255,255,255,.06), 0 16px 40px -14px rgba(0,0,0,.6); --e3: 0 30px 80px -20px rgba(0,0,0,.7);
+  color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg-1: #0f1220; --bg-2: #121a2c; --bg-3: #1a1324;
-  --blob-a: #6b2a4d; --blob-b: #23406e; --blob-c: #5a3d16;
-  --glass: rgba(26, 31, 48, .62); --glass-strong: rgba(30, 36, 56, .9); --glass-line: rgba(255, 255, 255, .08);
-  --ink: #eef1f7; --muted: #9aa5b8; --line: rgba(255, 255, 255, .08);
-  --accent-soft: rgba(255, 122, 69, .18); --lock-soft: rgba(124, 108, 240, .2);
-  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35); --shadow-lift: 0 18px 40px rgba(0,0,0,.45);
-  color-scheme: dark;
-}
+  --bg: #0b1020; --bg-blob-a: #4a1d36; --bg-blob-b: #1a2f5c; --bg-blob-c: #43300f;
+  --surface: #141a2e; --surface-2: #1a2139; --surface-glass: rgba(20,26,46,.72);
+  --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.16);
+  --text: #eef1f8; --text-2: #c4cbe0; --muted: #8b95ae; --primary: #eef1f8;
+  --e1: 0 0 0 1px rgba(255,255,255,.04); --e2: 0 0 0 1px rgba(255,255,255,.06), 0 16px 40px -14px rgba(0,0,0,.6); --e3: 0 30px 80px -20px rgba(0,0,0,.7);
+  color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { font: 14px/1.6 var(--font); color: var(--ink); background: linear-gradient(135deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3)); overflow: hidden; }
-button, textarea, input { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body { font: 14px/1.5 var(--font); letter-spacing: -.01em; color: var(--text); background: var(--bg); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
-/* ---------- drifting color blobs behind the glass ---------- */
-.blobs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-.blobs i { position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%; filter: blur(70px); opacity: .7; animation: drift 26s ease-in-out infinite alternate; }
-.blobs i:nth-child(1) { background: var(--blob-a); left: -12vmax; top: -14vmax; }
-.blobs i:nth-child(2) { background: var(--blob-b); right: -16vmax; top: 10vmax; animation-duration: 32s; animation-delay: -8s; }
-.blobs i:nth-child(3) { background: var(--blob-c); left: 20vmax; bottom: -22vmax; animation-duration: 38s; animation-delay: -14s; }
-@keyframes drift { to { transform: translate(6vmax, 4vmax) scale(1.12); } }
+/* ---------- background ---------- */
+.blobs { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.blobs i { position: absolute; width: 48vmax; height: 48vmax; border-radius: 50%; filter: blur(80px); opacity: .8; animation: bg-drift 30s var(--ease) infinite alternate; }
+.blobs i:nth-child(1) { background: var(--bg-blob-a); left: -14vmax; top: -16vmax; }
+.blobs i:nth-child(2) { background: var(--bg-blob-b); right: -18vmax; top: 8vmax; animation-delay: -10s; }
+.blobs i:nth-child(3) { background: var(--bg-blob-c); left: 24vmax; bottom: -26vmax; animation-delay: -18s; }
+@keyframes bg-drift { to { transform: translate(6vmax, 4vmax) scale(1.1); } }
 
-/* ---------- the app window ---------- */
-.window { position: relative; z-index: 1; height: calc(100% - 32px); margin: 16px; border-radius: 22px; overflow: hidden;
-  background: var(--glass); border: 1px solid var(--glass-line); box-shadow: var(--shadow-lift);
-  backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  display: grid; grid-template-rows: 44px 1fr; animation: window-in .7s var(--ease) both; }
-@keyframes window-in { from { opacity: 0; transform: translateY(18px) scale(.98); } }
-.titlebar { display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
-.titlebar .face { width: 22px; height: 22px; }
-.titlebar .title { font-weight: 700; }
-.titlebar .spacer { flex: 1; }
-.tb-btn { border: 0; background: none; border-radius: 10px; padding: 4px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
-.tb-btn:hover { background: var(--accent-soft); color: var(--ink); }
-.bell { position: relative; }
-.count { min-width: 18px; height: 18px; border-radius: 99px; padding: 0 5px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
-.count.pop { animation: pop .5s var(--spring); }
-@keyframes pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
-.winctl { display: flex; }
-.winctl span { width: 40px; height: 30px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+/* ---------- window ---------- */
+.window { position: relative; height: calc(100% - 68px); margin: 16px 16px 52px; border-radius: var(--r-lg); overflow: hidden; background: var(--surface-glass);
+  border: 1px solid var(--border); box-shadow: var(--e3); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  display: grid; grid-template-rows: 44px 1fr; animation: win-in .4s var(--ease) both; }
+@keyframes win-in { from { opacity: 0; transform: translateY(14px) scale(.99); filter: blur(4px); } }
+.titlebar { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.titlebar .name { font-weight: 700; }
+.spacer { flex: 1; }
+.tb { height: 32px; padding: 0 12px; border-radius: var(--r-sm); display: inline-flex; gap: 8px; align-items: center; color: var(--text-2); transition: background .15s, color .15s; }
+.tb:hover { background: var(--surface-2); color: var(--text); }
+.count { min-width: 20px; height: 20px; border-radius: 99px; padding: 0 6px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-size: 12px; font-weight: 700;
+  display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+.count.pop { animation: pop .35s var(--spring); }
+@keyframes pop { from { transform: scale(.4); } }
+.winctl { display: flex; color: var(--muted); }
+.winctl span { width: 44px; height: 32px; display: grid; place-items: center; }
 
-.body { display: grid; grid-template-columns: 300px 1fr auto; min-height: 0; }
+.body { display: grid; grid-template-columns: 300px 1fr auto; min-height: 0; position: relative; }
+
+/* ---------- avatar (shape + color + two tall white eyes) ---------- */
+.av { position: relative; width: 48px; height: 48px; flex: none; display: block; }
+.av svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.av .eyes { transform-origin: 50% 50%; animation: blink 6s infinite; animation-delay: var(--blink, 0s); }
+@keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+.av::before { content: ""; position: absolute; inset: -5px; border-radius: 50%; opacity: 0; pointer-events: none; }
+.av.working::before { opacity: 1; background: conic-gradient(var(--ok), transparent 60%); animation: spin 1.4s linear infinite;
+  -webkit-mask: radial-gradient(circle, transparent 64%, #000 66%); mask: radial-gradient(circle, transparent 64%, #000 66%); }
+.av.waiting::before { opacity: 1; background: radial-gradient(circle, transparent 60%, color-mix(in srgb, var(--accent) 45%, transparent) 64%, transparent 72%); animation: halo 2.4s var(--ease) infinite; }
+.av.asleep svg { filter: saturate(.55); opacity: .85; }
+.av .st { position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: var(--muted); }
+.av.working .st { background: var(--ok); } .av.waiting .st { background: var(--accent); }
+@keyframes spin { to { transform: rotate(1turn); } }
+@keyframes halo { from { transform: scale(.9); opacity: .9; } to { transform: scale(1.3); opacity: 0; } }
+.av.s { width: 32px; height: 32px; } .av.s .st { width: 11px; height: 11px; border-width: 2px; }
+.av.l { width: 56px; height: 56px; } .av.xl { width: 96px; height: 96px; } .av.xxl { width: 120px; height: 120px; }
+.av.xl .st, .av.xxl .st { display: none; }
 
 /* ---------- left: bots ---------- */
-.side { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.side-head { padding: 16px 16px 10px; }
-.side-head h1 { font-size: 20px; margin: 0 0 12px; letter-spacing: .01em; }
-.seg { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--line); border-radius: 99px; padding: 3px; }
-.seg button { position: relative; z-index: 1; border: 0; background: none; padding: 6px 0; border-radius: 99px; cursor: pointer; font-size: 12.5px; color: var(--muted); transition: color .25s; }
-.seg button[aria-pressed="true"] { color: var(--ink); font-weight: 700; }
-.seg .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 99px; background: var(--glass-strong); box-shadow: var(--shadow); transition: transform .45s var(--spring); }
-.bots { list-style: none; margin: 0; padding: 6px 10px 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.bots li { animation: rise .5s var(--ease) both; animation-delay: calc(var(--i) * 60ms + 150ms); }
-@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
-.row { width: 100%; display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid transparent; background: none; border-radius: 16px; text-align: left; cursor: pointer;
-  transition: background .25s, transform .3s var(--spring), box-shadow .3s, border-color .25s; }
-.row:hover { background: var(--glass-strong); transform: translateY(-1px); box-shadow: var(--shadow); }
-.row[aria-current="true"] { background: var(--glass-strong); border-color: var(--glass-line); box-shadow: var(--shadow); }
+.side { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.side-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 16px 12px 20px; }
+.side-head h1 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--e1);
+  transition: transform .2s var(--spring), box-shadow .2s; }
+.icon-btn:hover { transform: translateY(-2px); box-shadow: var(--e2); }
+.icon-btn:active { transform: scale(.94); }
+.bots { list-style: none; margin: 0; padding: 4px 12px 16px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.bots li { animation: rise .35s var(--ease) both; animation-delay: calc(min(var(--i), 12) * 50ms + 120ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } }
+.row { width: 100%; display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center; padding: 8px; border-radius: var(--r); text-align: left; border: 1px solid transparent;
+  transition: background .15s, transform .2s var(--spring), box-shadow .2s, border-color .15s; }
+.row:hover { background: var(--surface); box-shadow: var(--e1); transform: translateY(-1px); }
+.row:active { transform: scale(.98); }
+.row[aria-current="true"] { background: var(--surface); border-color: var(--border); box-shadow: var(--e2); }
 .row > div { min-width: 0; }
-.row .name { font-weight: 700; }
-.row .say { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 4px 12px rgba(255, 79, 139, .3); }
-.pill.lock { background: var(--lock); box-shadow: 0 4px 12px rgba(124, 108, 240, .3); }
-.side-foot { padding: 12px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
-.live { width: 8px; height: 8px; border-radius: 50%; background: var(--work); box-shadow: 0 0 0 0 rgba(34, 176, 125, .5); animation: ping 2.4s infinite; }
-@keyframes ping { 70% { box-shadow: 0 0 0 8px rgba(34, 176, 125, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 176, 125, 0); } }
+.row .n { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .l { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 99px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.badge.wait { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 6px 14px -6px var(--accent-2); }
+.badge.lock { color: #fff; background: var(--lock); box-shadow: 0 6px 14px -6px var(--lock); }
+.badge.new { color: var(--muted); background: var(--surface-2); }
+.side-foot { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: ping 2.4s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 50%, transparent); } 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
 
-/* ---------- face with an aura ---------- */
-.face { position: relative; width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, transparent 45%), var(--c); flex: none; display: block; }
-.face svg { position: relative; z-index: 1; width: 100%; height: 100%; display: block; }
-.face::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; z-index: 0; opacity: 0; transition: opacity .3s; }
-.face.working::before { opacity: 1; background: conic-gradient(from 0deg, transparent, var(--work), transparent 60%); animation: spin 1.6s linear infinite;
-  -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%); mask: radial-gradient(circle, transparent 60%, #000 62%); }
-.face.waiting { animation: breathe 2.6s ease-in-out infinite; }
-.face.waiting::before { opacity: 1; inset: -5px; background: radial-gradient(circle, transparent 58%, rgba(255, 122, 69, .45) 62%, transparent 72%); animation: halo 2.6s ease-out infinite; }
-.face.asleep { filter: saturate(.6); }
-.face.asleep::after { content: "z"; position: absolute; right: -4px; top: -8px; font-size: 12px; font-weight: 700; color: var(--muted); animation: float-z 3s ease-in-out infinite; z-index: 2; }
-@keyframes spin { to { transform: rotate(1turn); } }
-@keyframes breathe { 50% { transform: scale(1.05); } }
-@keyframes halo { 0% { transform: scale(.9); opacity: .9; } 100% { transform: scale(1.25); opacity: 0; } }
-@keyframes float-z { 0%, 100% { transform: translateY(0); opacity: .3; } 50% { transform: translateY(-6px); opacity: 1; } }
-.face.s { width: 34px; height: 34px; }
-.face.l { width: 56px; height: 56px; }
-.face.xl { width: 84px; height: 84px; }
-
-/* ---------- middle: conversation ---------- */
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.head { display: flex; align-items: center; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
-.head-name { border: 0; background: none; display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 4px 12px 4px 4px; border-radius: 99px; transition: background .25s; }
-.head-name:hover { background: var(--glass-strong); }
-.head-name strong { font-size: 17px; display: block; line-height: 1.2; text-align: left; }
-.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
-.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-.chip .dot.working { background: var(--work); }
-.chip .dot.waiting { background: var(--accent); }
-
-.chat { flex: 1; overflow-y: auto; padding: 22px 26px 120px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
-.day { align-self: center; color: var(--muted); font-size: 11.5px; padding: 2px 12px; border-radius: 99px; background: var(--glass-strong); }
-.msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; max-width: 620px; animation: bubble-in .5s var(--spring) both; animation-delay: calc(var(--i, 0) * 70ms); }
-@keyframes bubble-in { from { opacity: 0; transform: translateY(12px) scale(.96); filter: blur(4px); } }
+/* ---------- conversation ---------- */
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.head { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.head-name { display: flex; align-items: center; gap: 12px; padding: 4px 12px 4px 4px; border-radius: 99px; transition: background .15s; text-align: left; }
+.head-name:hover { background: var(--surface); }
+.head-name strong { display: block; font-size: 16px; font-weight: 700; line-height: 1.2; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.status i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); } .status.working i { background: var(--ok); } .status.waiting i { background: var(--accent); }
+.dots { display: inline-flex; gap: 4px; } .dots b { width: 4px; height: 4px; border-radius: 50%; background: var(--ok); animation: hop 1.2s infinite; }
+.dots b:nth-child(2) { animation-delay: .15s; } .dots b:nth-child(3) { animation-delay: .3s; }
+@keyframes hop { 30% { transform: translateY(-3px); } }
+.chat { flex: 1; overflow-y: auto; padding: 24px 24px 112px; display: flex; flex-direction: column; gap: 12px; }
+.view-in { animation: view-in .35s var(--ease) both; }
+@keyframes view-in { from { opacity: 0; transform: translateY(14px); filter: blur(4px); } }
+.day { align-self: center; color: var(--muted); font-size: 12px; padding: 0 12px; height: 24px; display: grid; place-items: center; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); }
+.msg { display: grid; grid-template-columns: 32px 1fr; gap: 12px; max-width: 640px; animation: rise .35s var(--ease) both; animation-delay: calc(min(var(--i, 0), 12) * 50ms); }
 .msg.mine { grid-template-columns: 1fr; align-self: flex-end; max-width: 480px; }
-.bubble { background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 6px 20px 20px 20px; padding: 10px 14px; box-shadow: var(--shadow); min-width: 0; overflow-wrap: anywhere; }
+.bubble { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 6px 20px 20px 20px; padding: 12px 16px; box-shadow: var(--e1); min-width: 0; overflow-wrap: anywhere; }
 .mine .bubble { background: var(--mine); color: #fff; border: 0; border-radius: 20px 6px 20px 20px; }
-.bubble time { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.bubble time { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
 .mine .bubble time { color: rgba(255,255,255,.8); }
-.tag { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .02em; margin-bottom: 4px; color: var(--accent); }
-.ask { position: relative; border: 0; }
-.ask::before { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; background: linear-gradient(135deg, var(--accent), var(--accent-2), #ffc46b);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
-/* Folding: grid rows 1fr → 0fr animates height without measuring. */
-.fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .45s var(--ease), opacity .3s; }
+.tag { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.tag .ico { width: 14px; height: 14px; }
+.ask, .secret { border-color: transparent; }
+.ask::before, .secret::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2), #ffc46b); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.secret::before { background: linear-gradient(135deg, var(--lock), #b39cff); }
+.secret .tag { color: var(--lock); }
+.fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s var(--ease), opacity .2s; }
 .fold > div { overflow: hidden; min-height: 0; }
 .fold.closed { grid-template-rows: 0fr; opacity: 0; }
-.choices { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
-.choice { border: 1px solid var(--line); background: var(--glass-strong); border-radius: 14px; padding: 8px 14px; cursor: pointer; transition: transform .3s var(--spring), box-shadow .25s, background .25s; }
-.choice:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; }
+.choice { height: 40px; padding: 0 16px; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--border); white-space: nowrap; transition: transform .2s var(--spring), box-shadow .2s, background .15s; }
+.choice:hover { transform: translateY(-2px); box-shadow: var(--e1); background: var(--surface); }
 .choice:active { transform: scale(.96); }
-.choice.rec { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border: 0; font-weight: 700; box-shadow: 0 6px 16px rgba(255, 79, 139, .3); }
-.answered { display: inline-flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; padding: 3px 10px; border-radius: 99px; background: var(--accent-soft); animation: bubble-in .4s var(--spring) both; }
+.choice.rec { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: #fff; font-weight: 700; box-shadow: 0 8px 18px -8px var(--accent-2); }
+.chip-done { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; margin-top: 8px; border-radius: 99px; font-size: 12px; font-weight: 700; color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 14%, transparent); animation: pop .3s var(--spring) both; }
+.chip-done .ico { width: 14px; height: 14px; }
+.cmd { display: block; font-family: var(--mono); font-size: 12.5px; letter-spacing: 0; background: var(--lock-soft); border-radius: var(--r-sm); padding: 8px 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.row-in { display: flex; gap: 8px; }
+.input { height: 40px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface); outline: 0; transition: border-color .15s, box-shadow .15s; min-width: 0; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.row-in .input { flex: 1; }
+.btn { height: 40px; padding: 0 16px; border-radius: var(--r-sm); display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; white-space: nowrap;
+  position: relative; overflow: hidden; transition: transform .2s var(--spring), box-shadow .2s, background .15s; }
+.btn:active:not(:disabled) { transform: scale(.96); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn-primary { background: var(--primary); color: var(--bg); }
+.btn-accent { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: 0 8px 18px -8px var(--accent-2); }
+.btn-lock { background: var(--lock); color: #fff; }
+.btn-ghost { background: var(--surface-2); border: 1px solid var(--border); font-weight: 600; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-accent::after, .btn-primary::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); transition: transform .6s var(--ease);
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.3) 50%, transparent 70%); }
+.btn-accent:hover:not(:disabled)::after, .btn-primary:hover:not(:disabled)::after { transform: translateX(100%); }
+.note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.record { align-self: center; display: inline-flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-2); height: 32px; padding: 0 12px; border-radius: 99px; background: var(--lock-soft); }
+.record .ico { width: 14px; height: 14px; color: var(--lock); }
+.record code { font-family: var(--mono); font-size: 12px; letter-spacing: 0; }
 
-.secret { border: 0; background: var(--glass-strong); position: relative; }
-.secret::before { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; background: linear-gradient(135deg, var(--lock), #b49cff);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
-.secret .tag { color: var(--lock); }
-.cmd { display: block; font-family: var(--mono); font-size: 12px; background: var(--lock-soft); border-radius: 10px; padding: 7px 10px; margin: 8px 0; overflow-wrap: anywhere; }
-.secret-row { display: flex; gap: 8px; }
-.secret-row input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--glass); }
-.btn { border: 1px solid var(--line); background: var(--glass-strong); border-radius: 12px; padding: 8px 14px; cursor: pointer; transition: transform .3s var(--spring); }
-.btn:active { transform: scale(.96); }
-.btn.lockb { background: var(--lock); border-color: var(--lock); color: #fff; font-weight: 700; }
-.btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: #fff; font-weight: 700; }
-.record { align-self: center; display: inline-flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); padding: 6px 12px; border-radius: 99px; background: var(--lock-soft); animation: bubble-in .5s var(--spring) both; }
-.record b { color: var(--ink); }
+.empty { margin: auto; text-align: center; max-width: 360px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.empty h2 { margin: 8px 0 0; font-size: 18px; font-weight: 700; }
+.empty p { margin: 0; color: var(--muted); }
+.empty code { font-family: var(--mono); font-size: 12.5px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 12px; }
 
-.composer-wrap { position: relative; }
-.composer { position: absolute; left: 22px; right: 22px; bottom: 18px; display: flex; gap: 10px; align-items: flex-end; padding: 8px 8px 8px 16px; border-radius: 24px;
-  background: var(--glass-strong); border: 1px solid var(--glass-line); box-shadow: var(--shadow-lift); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); transition: box-shadow .3s; }
-.composer:focus-within { box-shadow: var(--shadow-lift), 0 0 0 4px var(--accent-soft); }
+.composer { position: absolute; left: 24px; right: 24px; bottom: 20px; display: flex; gap: 8px; align-items: flex-end; padding: 8px 8px 8px 16px; border-radius: var(--r-lg);
+  background: var(--surface-glass); border: 1px solid var(--border); box-shadow: var(--e2); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); transition: box-shadow .2s; }
+.composer:focus-within { box-shadow: var(--e2), 0 0 0 4px var(--accent-soft); }
 .composer textarea { flex: 1; min-width: 0; border: 0; background: none; resize: none; padding: 8px 0; max-height: 140px; outline: none; }
-.send { width: 40px; height: 40px; border: 0; border-radius: 50%; cursor: pointer; color: #fff; font-size: 18px; flex: none; background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  transition: transform .35s var(--spring), opacity .2s; display: grid; place-items: center; }
-.send:disabled { opacity: .35; cursor: default; transform: scale(.9); }
-.send.sent { animation: sent .6s var(--spring); }
-@keyframes sent { 40% { transform: scale(.8) rotate(-20deg); } 100% { transform: scale(1); } }
+.send { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); transition: transform .25s var(--spring), opacity .15s; flex: none; }
+.send:disabled { opacity: .35; transform: scale(.9); cursor: default; }
+.send.fly { animation: fly .4s var(--spring); }
+@keyframes fly { 40% { transform: translateY(-4px) scale(.9); } }
 
-/* ---------- right: info panel that grows out of the header ---------- */
-.info { width: 0; overflow: hidden; border-left: 1px solid transparent; transition: width .5s var(--ease), border-color .3s; }
-.info.open { width: 340px; border-color: var(--line); }
-.info-inner { width: 340px; height: 100%; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
-.info-top { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 8px 0 6px; position: relative; }
-.info-top h2 { margin: 6px 0 0; font-size: 19px; }
-.x { position: absolute; right: 0; top: 0; border: 0; background: var(--line); width: 30px; height: 30px; border-radius: 50%; cursor: pointer; transition: transform .3s var(--spring); }
-.x:hover { transform: rotate(90deg); }
-.acc, .info-top { flex: none; }
-.chip { white-space: nowrap; }
-/* A narrow window: the info panel floats over the conversation instead of squeezing it. */
-@media (max-width: 1000px) {
-  .body { position: relative; grid-template-columns: 260px 1fr; }
-  .info { position: absolute; right: 0; top: 0; bottom: 0; z-index: 5; background: var(--glass-strong); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: var(--shadow-lift); }
-}
-.acc { border-radius: 16px; background: var(--glass-strong); border: 1px solid var(--glass-line); overflow: hidden; }
-.acc > button { width: 100%; border: 0; background: none; padding: 11px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-weight: 700; font-size: 13px; }
-.acc > button .chev { transition: transform .35s var(--spring); color: var(--muted); }
-.acc[data-open="true"] > button .chev { transform: rotate(90deg); }
-.acc .fold > div > div { padding: 0 14px 12px; }
-.acc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.acc li { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: var(--line); border-radius: 12px; padding: 7px 10px; font-size: 13px; }
-.acc li small { display: block; color: var(--muted); font-size: 11px; }
-.mini { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 8px; white-space: nowrap; }
-.mini:hover { background: var(--glass); color: var(--ink); }
-.chipk { display: inline-block; font-family: var(--mono); font-size: 12px; background: var(--line); border-radius: 8px; padding: 2px 8px; margin: 0 4px 4px 0; }
-.note { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
+/* ---------- info panel ---------- */
+.info { width: 0; overflow: hidden; border-left: 1px solid transparent; transition: width .35s var(--ease), border-color .2s; }
+.info.open { width: 360px; border-color: var(--border); }
+.info-inner { width: 360px; height: 100%; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.info-top { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0 12px; text-align: center; flex: none; }
+.info-top h2 { margin: 4px 0 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.info-top .x { position: absolute; right: 0; top: 0; }
+.link-btn { font-size: 12px; font-weight: 600; color: var(--accent); padding: 4px 8px; border-radius: 8px; }
+.link-btn:hover { background: var(--accent-soft); }
+.acc { flex: none; border-radius: var(--r); background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
+.acc > button { width: 100%; height: 44px; padding: 0 16px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13px; }
+.acc > button .ico { transition: transform .25s var(--spring); color: var(--muted); }
+.acc[data-open="true"] > button .ico { transform: rotate(90deg); }
+.acc .fold > div > div { padding: 0 16px 12px; }
+.acc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.acc li { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: var(--surface-2); border-radius: var(--r-sm); padding: 8px 12px; font-size: 13px; }
+.acc li small { display: block; color: var(--muted); font-size: 12px; }
+.mini { height: 28px; padding: 0 8px; border-radius: 8px; color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.mini:hover { background: var(--surface); }
+.mini.danger:hover { color: var(--danger); }
+.skill { display: inline-block; font-family: var(--mono); font-size: 12px; letter-spacing: 0; background: var(--surface-2); border-radius: 8px; padding: 4px 8px; margin: 0 4px 4px 0; }
+.warnline { display: flex; gap: 8px; font-size: 12px; color: var(--warn); margin-top: 8px; }
+.warnline .ico { width: 16px; height: 16px; }
 
-/* ---------- toasts and the OS notification preview ---------- */
-.toast { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); background: var(--ink); color: var(--bg-1); padding: 9px 16px; border-radius: 99px; font-size: 13px; z-index: 20; animation: toast 2.2s var(--ease) both; }
-@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 16px) scale(.9); } 12%, 85% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, 8px); } }
-.os-note { position: fixed; right: 26px; bottom: 26px; width: 340px; z-index: 30; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 16px; box-shadow: var(--shadow-lift);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 12px 14px; display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; cursor: pointer; animation: slide-in .55s var(--spring) both; }
-.os-note.out { animation: slide-out .35s var(--ease) both; }
-@keyframes slide-in { from { opacity: 0; transform: translateX(120%); } }
-@keyframes slide-out { to { opacity: 0; transform: translateX(120%); } }
-.os-note small { color: var(--muted); font-size: 11px; display: block; }
+/* ---------- dialogs ---------- */
+.scrim { position: fixed; inset: 0; z-index: 40; background: rgba(12,16,32,.32); display: grid; place-items: center; padding: 16px; animation: fade .2s var(--ease) both; }
+.scrim.out { animation: fade .15s var(--ease) reverse both; }
+@keyframes fade { from { opacity: 0; } }
+.dialog { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--e3); padding: 32px 32px 24px;
+  animation: dlg-in .3s var(--spring) both; }
+.scrim.out .dialog { animation: dlg-in .15s var(--ease) reverse both; }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(12px) scale(.96); } }
+.dialog h2 { margin: 0 0 4px; font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.preview { display: grid; place-items: center; margin: 8px 0 16px; }
+.preview .av { transition: transform .25s var(--spring); }
+.preview .av.bump { animation: bump .3s var(--spring); }
+@keyframes bump { 50% { transform: scale(1.08) rotate(-4deg); } }
+.name-in { width: 100%; height: 48px; text-align: center; font-size: 16px; font-weight: 700; border-radius: var(--r); }
+.label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 20px 0 8px; }
+.shapes { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.shape { aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; padding: 8px; transition: background .15s, transform .2s var(--spring), box-shadow .15s; }
+.shape:hover { background: var(--surface-2); transform: translateY(-2px); }
+.shape[aria-checked="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--border-strong); }
+.shape .av { width: 100%; height: 100%; }
+.colors { display: flex; flex-wrap: wrap; gap: 8px; }
+.color { width: 32px; height: 32px; border-radius: 50%; background: var(--c); transition: transform .2s var(--spring), box-shadow .15s; }
+.color:hover { transform: scale(1.1); }
+.color[aria-checked="true"] { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--c); }
+.dlg-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.confirm { width: min(400px, 100%); text-align: center; }
+.confirm p { color: var(--text-2); margin: 8px 0 0; }
+
+/* ---------- toast, notification, review bar ---------- */
+.toast { position: fixed; left: 50%; bottom: 32px; z-index: 60; display: inline-flex; gap: 8px; align-items: center; transform: translateX(-50%); background: var(--primary); color: var(--bg);
+  padding: 0 16px; height: 40px; border-radius: 99px; font-size: 13px; font-weight: 600; box-shadow: var(--e2); animation: toast 2.8s var(--ease) both; }
+.toast .ico { width: 16px; height: 16px; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 16px) scale(.94); } 10%, 88% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -8px); } }
+.os-note { position: fixed; right: 28px; bottom: 28px; z-index: 50; width: 360px; display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--e3); text-align: left; animation: note-in .35s var(--spring) both; }
+.os-note.out { animation: note-in .25s var(--ease) reverse both; }
+@keyframes note-in { from { opacity: 0; transform: translateX(110%); } }
+.os-note small { color: var(--muted); font-size: 12px; display: block; }
 .os-note b { display: block; font-size: 13px; }
+.review { position: fixed; left: 16px; bottom: 10px; z-index: 30; display: flex; gap: 4px; align-items: center; padding: 4px; border-radius: var(--r); background: var(--surface); border: 1px dashed var(--border-strong); font-size: 12px; }
+.review span { color: var(--muted); padding: 0 8px; }
+.review button { height: 28px; padding: 0 12px; border-radius: 10px; background: var(--surface-2); font-size: 12px; }
 
-.review { position: fixed; left: 26px; bottom: 26px; z-index: 25; display: flex; gap: 6px; flex-wrap: wrap; background: var(--glass-strong); border: 1px dashed var(--muted); border-radius: 14px; padding: 6px 8px; font-size: 12px; }
-.review span { color: var(--muted); align-self: center; padding: 0 4px; }
-.review button { border: 0; background: var(--line); border-radius: 10px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
-
-.typing { display: inline-flex; gap: 3px; margin-left: 2px; }
-.typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--work); animation: hop 1.2s infinite; }
-.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
-@keyframes hop { 30% { transform: translateY(-3px); } }
-
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: .35s; }
-
-/* Motion off: the OS setting, or the review toggle. Everything still works, it just stops moving. */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .25s; }
+@media (max-width: 1100px) {
+  .body { grid-template-columns: 260px 1fr; }
+  .info { position: absolute; right: 0; top: 0; bottom: 0; z-index: 5; background: var(--surface-glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: var(--e3); }
 }
-:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
+@media (max-width: 760px) { .body { grid-template-columns: 1fr; } .side { display: none; } .review { display: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 </style>
 </head>
 <body>
 <div class="blobs" aria-hidden="true"><i></i><i></i><i></i></div>
 
-<div class="window" role="application" aria-label="kantoku bot">
+<div class="window">
   <div class="titlebar">
-    <span id="appIcon"></span><span class="title">kantoku bot</span>
+    <span id="appIcon"></span><span class="name">kantoku bot</span>
     <span class="spacer"></span>
-    <button class="tb-btn bell" id="bell" title="あなた待ち">🔔 <span class="count" id="count">2</span></button>
-    <button class="tb-btn" id="phones" title="つないだ電話">📱 つないだ電話</button>
+    <button class="tb" id="bell" aria-label="あなた待ちを開く"><svg class="ico" data-i="bell"></svg><span class="count" id="count">0</span></button>
+    <button class="tb" id="phones"><svg class="ico" data-i="phone"></svg>つないだ電話</button>
     <div class="winctl" aria-hidden="true"><span>─</span><span>▢</span><span>✕</span></div>
   </div>
   <div class="body">
     <aside class="side">
-      <div class="side-head">
-        <h1>Bots</h1>
-        <div class="seg" role="group" aria-label="しぼりこみ">
-          <span class="thumb" id="thumb"></span>
-          <button aria-pressed="true" data-f="all">すべて</button>
-          <button aria-pressed="false" data-f="wait">あなた待ち</button>
-          <button aria-pressed="false" data-f="work">作業中</button>
-        </div>
-      </div>
+      <div class="side-head"><h1>Bots</h1><button class="icon-btn" id="newBot" aria-label="新しい Bot を作る"><svg class="ico" data-i="plus"></svg></button></div>
       <ul class="bots" id="bots"></ul>
-      <div class="side-foot"><span class="live"></span>このPCで動いています ・ 電話 1 台</div>
+      <div class="side-foot"><span class="live"></span><span id="foot">このPCで動いています</span></div>
     </aside>
-
     <main class="main">
       <header class="head"><button class="head-name" id="headName" aria-haspopup="dialog"></button></header>
-      <div class="composer-wrap" style="flex:1; min-height:0; display:flex; flex-direction:column;">
-        <section class="chat" id="chat" aria-live="polite"></section>
-        <form class="composer" id="composer">
-          <label for="say" hidden>メッセージ</label>
-          <textarea id="say" rows="1" placeholder="話しかける…"></textarea>
-          <button class="send" id="sendBtn" type="submit" disabled aria-label="送る">↑</button>
-        </form>
-      </div>
+      <section class="chat" id="chat" aria-live="polite"></section>
+      <form class="composer" id="composer">
+        <label for="say" hidden>メッセージ</label>
+        <textarea id="say" rows="1" placeholder="話しかける…"></textarea>
+        <button class="send" id="sendBtn" type="submit" disabled aria-label="送る"><svg class="ico" data-i="up"></svg></button>
+      </form>
     </main>
-
     <aside class="info" id="info" aria-label="情報"><div class="info-inner" id="infoInner"></div></aside>
   </div>
 </div>
 
 <div class="review" aria-label="試作の操作(本物には無い)">
-  <span>試作:</span>
-  <button id="demoNote">通知の例</button>
-  <button id="demoMotion">動きを止める</button>
-  <button id="demoTheme">明るさを切り替え</button>
+  <span>試作</span><button id="demoNote">通知の例</button><button id="demoMotion">動きを止める</button><button id="demoTheme">明るさ</button>
 </div>
 
 <script>
-// Dummy data. In kantoku bot this comes from ~/.kantoku/<name>/.
+// ---------- icons: one line set, stroke 1.9 ----------
+const ICONS = {
+  bell: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0",
+  phone: "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM12 18h.01",
+  plus: "M12 5v14M5 12h14", x: "M18 6 6 18M6 6l12 12", chev: "m9 18 6-6-6-6", up: "M12 19V5M5 12l7-7 7 7",
+  lock: "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5z", spark: "M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z",
+  check: "M20 6 9 17l-5-5", alert: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01",
+  copy: "M8 8h12v12H8zM4 16V4h12", pen: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
+};
+function ico(name, cls) { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("class", "ico" + (cls ? " " + cls : "")); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true");
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", ICONS[name]); s.append(p); return s; }
+document.querySelectorAll("svg[data-i]").forEach(s => s.replaceWith(ico(s.dataset.i)));
+
+// ---------- avatars: 13 shapes x 11 colors, two tall white eyes ----------
+const COLORS = { black: "#26262b", brown: "#8d5b3c", red: "#e5484d", orange: "#f76b15", amber: "#ffb224", green: "#30a46c", teal: "#12a594", blue: "#3e63dd", purple: "#8e4ec6", pink: "#e93d82", gray: "#8b8d98" };
+const NS = "http://www.w3.org/2000/svg";
+function poly(n, rOut, rIn, cy) { const pts = []; const k = rIn ? n * 2 : n; for (let i = 0; i < k; i++) { const r = rIn && i % 2 ? rIn : rOut, a = -Math.PI / 2 + i * Math.PI * 2 / k; pts.push((50 + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1)); } return pts.join(" "); }
+// Each shape: SVG markup in a 100x100 box (fill = currentColor) and where the eyes sit.
+const SHAPES = {
+  circle:  { label: "丸", eyes: 48, svg: '<circle cx="50" cy="50" r="44"/>' },
+  square:  { label: "角の丸い四角", eyes: 48, svg: '<rect x="8" y="8" width="84" height="84" rx="26"/>' },
+  capsule: { label: "カプセル", eyes: 44, svg: '<rect x="22" y="4" width="56" height="92" rx="28"/>' },
+  diamond: { label: "ひし形", eyes: 50, svg: '<rect x="20" y="20" width="60" height="60" rx="14" transform="rotate(45 50 50)"/>' },
+  triangle:{ label: "三角", eyes: 62, svg: '<polygon points="50,16 88,82 12,82" stroke="currentColor" stroke-width="16" stroke-linejoin="round"/>' },
+  star:    { label: "星", eyes: 54, svg: '<polygon points="' + poly(5, 40, 20, 54) + '" stroke="currentColor" stroke-width="12" stroke-linejoin="round"/>' },
+  flower:  { label: "花", eyes: 50, svg: [0, 1, 2, 3, 4].map(i => { const a = -Math.PI / 2 + i * Math.PI * 2 / 5; return '<circle cx="' + (50 + 26 * Math.cos(a)).toFixed(1) + '" cy="' + (52 + 26 * Math.sin(a)).toFixed(1) + '" r="22"/>'; }).join("") + '<circle cx="50" cy="52" r="26"/>' },
+  clover:  { label: "四つ葉", eyes: 50, svg: '<circle cx="31" cy="31" r="23"/><circle cx="69" cy="31" r="23"/><circle cx="31" cy="69" r="23"/><circle cx="69" cy="69" r="23"/><circle cx="50" cy="50" r="26"/>' },
+  cloud:   { label: "雲", eyes: 58, svg: '<circle cx="30" cy="60" r="22"/><circle cx="52" cy="42" r="28"/><circle cx="74" cy="60" r="20"/><rect x="18" y="56" width="66" height="26" rx="13"/>' },
+  drop:    { label: "しずく", eyes: 64, svg: '<path d="M50 6C50 6 84 42 84 63a34 34 0 0 1-68 0C16 42 50 6 50 6z"/>' },
+  hexagon: { label: "六角形", eyes: 50, svg: '<polygon points="' + poly(6, 38, 0, 50) + '" stroke="currentColor" stroke-width="14" stroke-linejoin="round"/>' },
+  heart:   { label: "ハート", eyes: 46, svg: '<path d="M50 88C20 66 6 50 6 32 6 18 17 8 30 8c9 0 16 5 20 12 4-7 11-12 20-12 13 0 24 10 24 24 0 18-14 34-44 56z"/>' },
+  egg:     { label: "たまご", eyes: 54, svg: '<ellipse cx="50" cy="52" rx="38" ry="44"/>' },
+};
+// Default look for a manager that has not picked one: a stable hash of its name.
+function hash(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+function lookOf(bot) { if (bot.shape && bot.color) return bot; const h = hash(bot.name), keys = Object.keys(SHAPES), cs = Object.keys(COLORS); return { shape: keys[h % keys.length], color: cs[(h >> 4) % cs.length] }; }
+function avatar(bot, size, status) {
+  const look = lookOf(bot), shape = SHAPES[look.shape], st = status === undefined ? bot.status : status;
+  const span = document.createElement("span"); span.className = "av" + (st ? " " + st : "") + (size ? " " + size : ""); span.setAttribute("aria-hidden", "true");
+  span.style.setProperty("--blink", (hash(bot.name || "x") % 50) / 10 + "s");
+  const y = shape.eyes, eyes = st === "asleep"
+    ? '<path d="M35 ' + y + 'q5 4 10 0M55 ' + y + 'q5 4 10 0" stroke="#fff" stroke-width="4" stroke-linecap="round" fill="none"/>'
+    : '<g class="eyes" style="transform-origin:50px ' + y + 'px"><ellipse cx="40" cy="' + y + '" rx="5.5" ry="9.5" fill="#fff"/><ellipse cx="60" cy="' + y + '" rx="5.5" ry="9.5" fill="#fff"/></g>';
+  span.innerHTML = '<svg viewBox="0 0 100 100" style="color:' + COLORS[look.color] + '"><g fill="currentColor">' + shape.svg + '</g>' + eyes + '</svg>';
+  if (st) span.append(Object.assign(document.createElement("span"), { className: "st" }));
+  return span;
+}
+
+// ---------- data (made up) ----------
 const BOTS = [
-  { name: "Mochi", color: "#ffb3c7", status: "waiting", say: "PR を出す前に見てほしいな",
+  { name: "Mochi", shape: "cloud", color: "pink", status: "waiting", line: "PR を出す前に見てほしいな",
     desc: "Web アプリの issue を進めて、PR を出すところまで面倒を見ます。", nots: ["本番への反映", "新しい issue を立てること"],
-    memory: [["main に merge すると自動で本番に出る", "11/12"], ["E2E テストは夜だけ回す決まり", "11/15"]],
-    routines: [["朝の見回り", "平日 8:44"]],
+    memory: [["main に merge すると自動で本番に出る", "11/12"], ["E2E テストは夜だけ回す決まり", "11/15"]], routines: [["朝の見回り", "平日 8:44"]],
     talk: [
       { day: "11/18", t: "21:02", from: "bot", text: "検索の並び替え(#128)ができました。検証役も合格です。" },
       { day: "11/18", t: "21:20", from: "me", text: "ありがとう。初期値は新しい順にしておいて", sent: "届けました" },
-      { day: "11/19", t: "9:40", from: "bot", ask: true, text: "PR を出す前に、どこで試しますか?",
-        choices: [["手元で試す", true], ["ステージングで試す", false], ["試さずに出す", false]] },
+      { day: "11/19", t: "9:40", from: "bot", ask: true, text: "PR を出す前に、どこで試しますか?", choices: [["手元で試す", true], ["ステージングで試す", false], ["試さずに出す", false]] },
     ] },
-  { name: "Pico", color: "#ffd66b", status: "waiting", say: "秘密を 1 つ登録してほしい",
-    desc: "kantoku そのものを良くする係です。", nots: ["LICENSE の変更", "リリースのお知らせ"],
-    memory: [["push のたびに版の番号を上げる", "11/18"]], routines: [["困りごと探し", "平日 8:44"], ["ルーティン点検", "月曜 8:49"]],
+  { name: "Pico", shape: "star", color: "amber", status: "waiting", line: "秘密を 1 つ登録してほしい",
+    desc: "kantoku そのものを良くする係です。", nots: ["LICENSE の変更", "リリースのお知らせ"], memory: [["push のたびに版の番号を上げる", "11/18"]], routines: [["困りごと探し", "平日 8:44"], ["ルーティン点検", "月曜 8:49"]],
     talk: [
+      { day: "11/19", t: "8:02", from: "record", device: "my phone", cmd: "gh secret set NPM_TOKEN --repo example-org/web", exit: 0 },
       { day: "11/19", t: "9:20", from: "bot", text: "CI に Vercel の鍵が要ります。カードを出しました。" },
       { day: "11/19", t: "9:21", from: "bot", secret: true, label: "Vercel token", cmd: "gh secret set VERCEL_TOKEN --repo example-org/web", left: "あと 28 分" },
-      { day: "11/19", t: "8:02", from: "record", text: "my phone から登録しました", cmd: "gh secret set NPM_TOKEN --repo example-org/web", exit: 0 },
     ] },
-  { name: "Kumo", color: "#a8d8ff", status: "working", say: "テストを直しているところ",
-    desc: "データの整理を手伝います。", nots: ["ファイルの削除"], memory: [], routines: [],
+  { name: "Kumo", shape: "drop", color: "blue", status: "working", line: "テストを直しているところ", desc: "データの整理を手伝います。", nots: ["ファイルの削除"], memory: [], routines: [],
     talk: [{ day: "11/19", t: "9:29", from: "bot", text: "テストの直しを始めました。終わったら知らせます。" }] },
-  { name: "Sora", color: "#c5b8ff", status: "asleep", say: "おやすみ中",
-    desc: "共有ドライブの整理を手伝います。", nots: ["権限を変えること"], memory: [["共有の設定はドライブごとに違う", "11/16"]], routines: [],
+  { name: "Hana", shape: "flower", color: "purple", status: "working", line: "週報の下書きを作っています", desc: "毎週の報告をまとめます。", nots: ["外への送信"], memory: [["週報は金曜 17 時まで", "11/10"]], routines: [["週報の下書き", "金曜 15:00"]],
+    talk: [{ day: "11/19", t: "9:10", from: "bot", text: "今週の PR を 12 件集めました。下書きを作っています。" }] },
+  { name: "Clover", shape: "clover", color: "green", status: "working", line: "依存関係の更新を確かめています", desc: "ライブラリの更新を見張ります。", nots: ["major の更新"], memory: [], routines: [["更新の見回り", "毎日 7:30"]],
+    talk: [{ day: "11/19", t: "7:31", from: "bot", text: "更新が 3 件あります。テストを回しています。" }] },
+  { name: "Sora", shape: "egg", color: "teal", status: "asleep", line: "おやすみ中", desc: "共有ドライブの整理を手伝います。", nots: ["権限を変えること"], memory: [["共有の設定はドライブごとに違う", "11/16"]], routines: [],
     talk: [{ day: "11/16", t: "16:40", from: "bot", text: "棚卸しが終わりました。気になる点が 5 つあります。" }] },
+  { name: "Tsumiki-documentation-helper", shape: "square", color: "orange", status: "asleep", line: "README の英語化をしました(おやすみ中)", desc: "文書を直します。", nots: [], memory: [], routines: [],
+    talk: [{ day: "11/15", t: "18:00", from: "bot", text: "README の英語化が終わりました。" }] },
 ];
 const SKILLS = ["writing-plans", "unslop", "architect"];
-const PHONES = [{ name: "my phone", seen: "9:41" }];
-const STATUS = { working: "作業中", waiting: "あなた待ち", asleep: "おやすみ中" };
+const PHONES = [{ name: "my phone", seen: "9:41", last: "NPM_TOKEN を登録 ・ 8:02" }];
+const STATUS = { working: "作業中", waiting: "あなた待ち", asleep: "おやすみ中", new: "まだ動いていません" };
 const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
+const later = (fn, ms) => setTimeout(fn, reduce() ? 0 : ms);
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-const NS = "http://www.w3.org/2000/svg";
-function svgEl(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
-function face(bot, size) {
-  const span = el("span", "face " + bot.status + (size ? " " + size : ""));
-  span.style.setProperty("--c", bot.color);
-  const s = svgEl("svg", { viewBox: "0 0 48 48", "aria-hidden": "true" });
-  const ink = { stroke: "#1d2433", "stroke-width": "2.2", fill: "none", "stroke-linecap": "round" };
-  s.append(svgEl("ellipse", { cx: 12, cy: 28, rx: 3.2, ry: 2, fill: "#ff8fab", opacity: ".45" }), svgEl("ellipse", { cx: 36, cy: 28, rx: 3.2, ry: 2, fill: "#ff8fab", opacity: ".45" }));
-  if (bot.status === "asleep") s.append(svgEl("path", { d: "M14 21q3 2 6 0M28 21q3 2 6 0", ...ink }));
-  else s.append(svgEl("circle", { cx: 17, cy: 21, r: 2.7, fill: "#1d2433" }), svgEl("circle", { cx: 31, cy: 21, r: 2.7, fill: "#1d2433" }), svgEl("circle", { cx: 18, cy: 20, r: .9, fill: "#fff" }), svgEl("circle", { cx: 32, cy: 20, r: .9, fill: "#fff" }));
-  if (bot.status === "waiting") s.append(svgEl("path", { d: "M19 29q5 5 10 0", ...ink }));
-  else if (bot.status === "working") s.append(svgEl("path", { d: "M21 30h6", ...ink }));
-  else s.append(svgEl("circle", { cx: 24, cy: 30, r: 1.8, fill: "#1d2433" }));
-  span.append(s);
-  return span;
-}
-function chip(b) {
-  const c = el("span", "chip"); c.append(el("span", "dot " + b.status), STATUS[b.status]);
-  if (b.status === "working") { const t = el("span", "typing"); t.append(el("i"), el("i"), el("i")); c.append(t); }
-  return c;
-}
-function toast(text) { const t = el("div", "toast", text); document.body.append(t); setTimeout(() => t.remove(), 2300); }
+function status(b) { const s = el("span", "status " + b.status); s.append(el("i"), STATUS[b.status]); if (b.status === "working") { const d = el("span", "dots"); d.append(el("b"), el("b"), el("b")); s.append(d); } return s; }
+function toast(text, icon) { const t = el("div", "toast"); t.setAttribute("role", "status"); if (icon) t.append(ico(icon)); t.append(text); document.body.append(t); setTimeout(() => t.remove(), 2900); }
 function now() { const d = new Date(); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); }
-function waitingCount() { return BOTS.reduce((n, b) => n + b.talk.filter(x => (x.ask && !x.answered) || (x.secret && !x.done)).length, 0); }
-// View Transitions where the browser has them and motion is on; plain swap otherwise.
+function waits(b) { return b.talk.filter(x => (x.ask && !x.answered) || (x.secret && !x.done)).length; }
 function swap(fn) { if (document.startViewTransition && !reduce()) document.startViewTransition(fn); else fn(); }
 
-let current = 0, filter = "all", infoOpen = false;
+let current = 0, infoOpen = false, infoFocus = null;
 const bot = () => BOTS[current];
 
 function renderList() {
   const ul = document.getElementById("bots"); ul.textContent = "";
-  const order = { waiting: 0, working: 1, asleep: 2 };
-  BOTS.map((b, i) => [b, i]).filter(([b]) => filter === "all" || (filter === "wait" ? b.status === "waiting" : b.status === "working"))
-    .sort((a, c) => order[a[0].status] - order[c[0].status]).forEach(([b, i], k) => {
-      const li = el("li"); li.style.setProperty("--i", k);
-      const row = el("button", "row"); row.setAttribute("aria-current", i === current ? "true" : "false");
-      const mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say));
-      const waits = b.talk.some(x => x.secret && !x.done) ? el("span", "pill lock", "秘密") : b.status === "waiting" ? el("span", "pill", "あなた待ち") : el("span");
-      row.append(face(b), mid, waits);
-      row.onclick = () => swap(() => { current = i; renderAll(); });
-      li.append(row); ul.append(li);
-    });
-  const c = document.getElementById("count"); const n = waitingCount();
+  const order = { waiting: 0, working: 1, new: 2, asleep: 3 };
+  BOTS.map((b, i) => [b, i]).sort((a, c) => order[a[0].status] - order[c[0].status]).forEach(([b, i], k) => {
+    const li = el("li"); li.style.setProperty("--i", k);
+    const row = el("button", "row"); row.setAttribute("aria-current", i === current ? "true" : "false");
+    const mid = el("div"); mid.append(el("div", "n", b.name), el("div", "l", b.line)); mid.title = b.name;
+    const secret = b.talk.some(x => x.secret && !x.done);
+    const badge = secret ? el("span", "badge lock", "秘密") : b.status === "waiting" ? el("span", "badge wait", "あなた待ち") : b.status === "new" ? el("span", "badge new", "新しい") : el("span");
+    row.append(avatar(b), mid, badge);
+    row.onclick = () => swap(() => { current = i; renderAll(); });
+    li.append(row); ul.append(li);
+  });
+  const c = document.getElementById("count"), n = BOTS.reduce((s, b) => s + waits(b), 0);
   if (c.textContent !== String(n)) { c.textContent = n; c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop"); }
   c.hidden = n === 0;
+  document.getElementById("foot").textContent = "このPCで動いています ・ Bot " + BOTS.length + " ・ 電話 " + PHONES.length;
 }
 
 function renderChat() {
-  const b = bot();
-  const hn = document.getElementById("headName"); hn.textContent = "";
-  const txt = el("span"); txt.append(el("strong", null, b.name), chip(b));
-  hn.append(face(b, "l"), txt);
+  const b = bot(), hn = document.getElementById("headName"); hn.textContent = "";
+  const txt = el("span"); txt.append(el("strong", null, b.name), status(b)); hn.append(avatar(b, "l"), txt);
   document.getElementById("say").placeholder = b.name + " に話しかける…";
-  const chat = document.getElementById("chat"); chat.textContent = "";
+  const chat = document.getElementById("chat"); chat.textContent = ""; chat.classList.remove("view-in"); void chat.offsetWidth; chat.classList.add("view-in");
+  if (b.status === "new") {
+    const e = el("div", "empty"); const cmd = "/kantoku " + b.name.toLowerCase(), copy = el("button", "btn btn-ghost"); copy.append(ico("copy"), "命令を写す");
+    copy.onclick = () => { navigator.clipboard?.writeText(cmd).catch(() => {}); toast("写しました", "check"); };
+    e.append(avatar(b, "xl", null), el("h2", null, b.name + " はまだ動いていません"), el("p", null, "Orca で次の命令を打つと、" + b.name + " として動き出します。"), el("code", null, cmd), copy);
+    chat.append(e); return;
+  }
   let day = "";
   b.talk.forEach((item, k) => {
     if (item.day !== day) { chat.append(el("div", "day", item.day)); day = item.day; }
     if (item.from === "record") {
-      const r = el("div", "record"); r.append("📱 ", el("b", null, item.text), " ・ " + item.cmd + " ・ exit " + item.exit + " ・ " + item.t);
-      chat.append(r); return;
+      const r = el("div", "record"); r.append(ico("phone"), el("b", null, item.device + " から登録しました"), el("code", null, item.cmd), "exit " + item.exit + " ・ " + item.t); chat.append(r); return;
     }
-    if (item.from === "me") {
-      const m = el("div", "msg mine"), bub = el("div", "bubble"); m.style.setProperty("--i", k);
-      bub.append(el("span", null, item.text), el("time", null, item.t + " ・ " + item.sent));
-      m.append(bub); chat.append(m); return;
-    }
+    if (item.from === "me") { const m = el("div", "msg mine"), bub = el("div", "bubble"); m.style.setProperty("--i", k); bub.append(el("span", null, item.text), el("time", null, item.t + " ・ " + item.sent)); m.append(bub); chat.append(m); return; }
     const m = el("div", "msg"); m.style.setProperty("--i", k);
     const bub = el("div", "bubble" + (item.ask ? " ask" : "") + (item.secret ? " secret" : ""));
-    if (item.ask) bub.append(el("span", "tag", "✦ あなたに聞きたいこと"));
-    if (item.secret) bub.append(el("span", "tag", "🔒 秘密を登録してほしい"));
-    bub.append(el("span", null, item.ask ? item.text : item.secret ? item.label : item.text));
+    if (item.ask) { const t = el("span", "tag"); t.append(ico("spark"), "あなたに聞きたいこと"); bub.append(t); }
+    if (item.secret) { const t = el("span", "tag"); t.append(ico("lock"), "秘密を登録してほしい"); bub.append(t); }
+    bub.append(el("span", null, item.secret ? item.label : item.text));
     if (item.ask) {
       const fold = el("div", "fold" + (item.answered ? " closed" : "")), inner = el("div"), row = el("div", "choices");
-      item.choices.forEach(([label, rec]) => {
-        const c = el("button", "choice" + (rec ? " rec" : ""), label + (rec ? " ★" : ""));
-        c.onclick = () => answer(item, label, fold, bub); row.append(c);
-      });
-      const own = el("button", "choice", "自分で書く");
-      own.onclick = () => { const t = document.getElementById("say"); t.focus(); t.placeholder = "答えを書く…"; t.dataset.answerFor = b.talk.indexOf(item); };
+      item.choices.forEach(([label, rec]) => { const c = el("button", "choice" + (rec ? " rec" : ""), label + (rec ? "(おすすめ)" : "")); c.onclick = () => answer(item, label, fold); row.append(c); });
+      const own = el("button", "choice", "自分で書く"); own.onclick = () => { const t = document.getElementById("say"); t.focus(); t.placeholder = "答えを書く…"; t.dataset.answerFor = b.talk.indexOf(item); };
       row.append(own); inner.append(row); fold.append(inner); bub.append(fold);
-      if (item.answered) bub.append(el("span", "answered", "✓ 答えた: " + item.answered));
+      if (item.answered) { const d = el("span", "chip-done"); d.append(ico("check"), "答えた: " + item.answered); bub.append(d); }
     }
     if (item.secret) {
       bub.append(el("code", "cmd", item.cmd));
-      const fold = el("div", "fold" + (item.done ? " closed" : "")), inner = el("div");
-      const row = el("form", "secret-row"), inp = el("input"); inp.type = "password"; inp.placeholder = "値を貼る"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "秘密の値");
-      const go = el("button", "btn lockb", "登録"); go.type = "submit";
-      row.onsubmit = e => { e.preventDefault(); if (!inp.value) return; item.done = true; inp.value = "";
-        b.talk.push({ day: "11/19", t: now(), from: "record", text: "この PC から登録しました", cmd: item.cmd, exit: 0 });
-        if (!b.talk.some(x => (x.ask && !x.answered) || (x.secret && !x.done))) { b.status = "working"; b.say = "続きから作業中"; }
-        fold.classList.add("closed"); setTimeout(() => { renderAll(); toast("登録しました(exit 0)"); }, reduce() ? 0 : 420); };
-      row.append(inp, go); inner.append(row, el("p", "note", "値はこの命令の入力にだけ渡します。どこにも残しません。")); fold.append(inner); bub.append(fold);
-      if (item.done) bub.append(el("span", "answered", "✓ 登録しました"));
+      const fold = el("div", "fold" + (item.done ? " closed" : "")), inner = el("div"), form = el("form", "row-in");
+      const inp = el("input", "input"); inp.type = "password"; inp.placeholder = "値を貼る"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "秘密の値");
+      const go = el("button", "btn btn-lock", "登録"); go.type = "submit";
+      form.onsubmit = e => { e.preventDefault(); if (!inp.value) { inp.focus(); return; } go.disabled = true; go.textContent = "登録中…"; inp.value = "";
+        later(() => { item.done = true; b.talk.push({ day: "11/19", t: now(), from: "record", device: "この PC", cmd: item.cmd, exit: 0 });
+          if (!waits(b)) { b.status = "working"; b.line = "続きから作業中"; } fold.classList.add("closed"); later(() => { renderAll(); toast("登録しました(exit 0)", "check"); }, 300); }, 500); };
+      form.append(inp, go); inner.append(form, el("p", "note", "値はこの命令の入力にだけ渡します。どこにも残しません。")); fold.append(inner); bub.append(fold);
     }
     bub.append(el("time", null, item.t + (item.left && !item.done ? " ・ " + item.left : "")));
-    m.append(face(b, "s"), bub); chat.append(m);
+    m.append(avatar(b, "s", null), bub); chat.append(m);
   });
   requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
 }
 
-function answer(item, label, fold, bub) {
-  const b = bot();
-  item.answered = label;
-  fold.classList.add("closed");
-  setTimeout(() => {
-    b.talk.push({ day: "11/19", t: now(), from: "me", text: label, sent: "届けました" });
-    if (!b.talk.some(x => (x.ask && !x.answered) || (x.secret && !x.done))) { b.status = "working"; b.say = "続きから作業中"; }
-    renderAll(); toast("答えを " + b.name + " に届けました");
-  }, reduce() ? 0 : 420);
+function answer(item, label, fold) {
+  const b = bot(); item.answered = label; fold.classList.add("closed");
+  later(() => { b.talk.push({ day: "11/19", t: now(), from: "me", text: label, sent: "届けました" }); if (!waits(b)) { b.status = "working"; b.line = "続きから作業中"; } renderAll(); toast("答えを " + b.name + " に届けました", "check"); }, 300);
 }
 
+// ---------- info panel ----------
 function accordion(title, open, body) {
   const box = el("div", "acc"); box.dataset.open = open;
-  const head = el("button"); head.append(el("span", null, title), el("span", "chev", "›"));
-  const fold = el("div", "fold" + (open ? "" : " closed")), inner = el("div"), pad = el("div");
-  pad.append(...body); inner.append(pad); fold.append(inner);
-  head.onclick = () => { const o = box.dataset.open !== "true"; box.dataset.open = o; fold.classList.toggle("closed", !o); };
+  const head = el("button"); head.setAttribute("aria-expanded", open); head.append(el("span", null, title), ico("chev"));
+  const fold = el("div", "fold" + (open ? "" : " closed")), inner = el("div"), pad = el("div"); pad.append(...body); inner.append(pad); fold.append(inner);
+  head.onclick = () => { const o = box.dataset.open !== "true"; box.dataset.open = o; head.setAttribute("aria-expanded", o); fold.classList.toggle("closed", !o); };
   box.append(head, fold); return box;
 }
-function list(items) { const ul = el("ul"); items.forEach(li => ul.append(li)); if (!items.length) ul.append(el("li", null, "まだありません")); return ul; }
-
-function renderInfo(focusPhones) {
+function list(items) { const u = el("ul"); items.forEach(li => u.append(li)); if (!items.length) u.append(el("li", null, "まだありません")); return u; }
+function renderInfo() {
   const b = bot(), box = document.getElementById("infoInner"); box.textContent = "";
-  const top = el("div", "info-top"), x = el("button", "x", "✕"); x.setAttribute("aria-label", "閉じる"); x.onclick = () => openInfo(false);
-  top.append(x, face(b, "xl"), el("h2", null, b.name), chip(b));
+  const top = el("div", "info-top"), x = el("button", "icon-btn x"); x.setAttribute("aria-label", "閉じる"); x.append(ico("x")); x.onclick = () => openInfo(false);
+  const look = el("button", "link-btn"); look.append("見た目を変える"); look.onclick = () => avatarDialog(b);
+  top.append(x, avatar(b, "xl"), el("h2", null, b.name), status(b), look);
   const desc = el("p", null, b.desc); desc.style.margin = "0";
-  const nots = el("p", "note", "やらないこと: " + b.nots.join("、"));
-  const mem = list(b.memory.map(([f, d]) => { const li = el("li"), t = el("div", null, f); t.append(el("small", null, d + " に覚えた")); li.append(t, el("button", "mini", "忘れて")); return li; }));
-  const rou = list(b.routines.map(([n, w]) => { const li = el("li"), t = el("div", null, n); t.append(el("small", null, w)); li.append(t, el("button", "mini", "止めてと頼む")); return li; }));
-  const sk = el("div"); SKILLS.forEach(s => sk.append(el("span", "chipk", s)));
-  const ph = list(PHONES.map(p => { const li = el("li"), t = el("div", null, p.name); t.append(el("small", null, "最後に使った: " + p.seen)); const rm = el("button", "mini", "外す");
-    rm.onclick = () => { PHONES.splice(PHONES.indexOf(p), 1); renderInfo(true); toast(p.name + " を外しました。次から開けません"); }; li.append(t, rm); return li; }));
-  const pair = el("button", "btn primary", "電話をつなぐ"); pair.style.marginTop = "8px"; pair.onclick = () => toast("6 けたの数字: 482 913(10 分だけ)");
+  const mem = list(b.memory.map(([f, d]) => { const li = el("li"), t = el("div", null, f); t.append(el("small", null, d + " に覚えた")); li.append(t, el("button", "mini danger", "忘れて")); li.lastChild.onclick = () => { b.memory = b.memory.filter(m => m[0] !== f); renderInfo(); toast("忘れました(控えは残してあります)", "check"); }; return li; }));
+  const rou = list(b.routines.map(([n, w]) => { const li = el("li"), t = el("div", null, n); t.append(el("small", null, w)); const s = el("button", "mini", "止めてと頼む");
+    s.onclick = () => { b.talk.push({ day: "11/19", t: now(), from: "me", text: "ルーティン「" + n + "」を止めて", sent: "届けました" }); renderChat(); toast(b.name + " に頼みました", "check"); }; li.append(t, s); return li; }));
+  const sk = el("div"); SKILLS.forEach(s => sk.append(el("span", "skill", s)));
+  const ph = list(PHONES.map(p => { const li = el("li"), t = el("div", null, p.name); t.append(el("small", null, "最後に使った: " + p.seen), el("small", null, "最後の登録: " + p.last));
+    const rm = el("button", "mini danger", "外す"); rm.onclick = () => confirmDialog(p.name + " を外しますか?", "外すと、この電話から kantoku bot を開けなくなります。もう一度使うには PC でつなぎ直します。", "外す", () => { PHONES.splice(PHONES.indexOf(p), 1); renderAll(); toast(p.name + " を外しました", "check"); });
+    li.append(t, rm); return li; }));
+  const pair = el("button", "btn btn-accent"); pair.append(ico("plus"), "電話をつなぐ"); pair.style.marginTop = "8px"; pair.onclick = () => toast("6 けたの数字: 482 913(10 分だけ)", "phone");
+  const warn = el("div", "warnline"); warn.append(ico("alert"), el("span", null, "つないだ電話は、あなたとして答え・話しかけ・秘密の登録までできます。なくしたらすぐ外してください。"));
   box.append(top,
-    accordion("説明 ⚙", !focusPhones, [desc, nots]),
-    accordion("覚えていること", false, [mem]),
-    accordion("ルーティン", false, [rou]),
-    accordion("スキル(みんなで共有)", false, [sk]),
-    accordion("つないだ電話", !!focusPhones, [ph, pair, el("p", "note", "つないだ電話は、あなたとして答えたり話しかけたりできます。なくしたら、ここで外してください。")]));
+    accordion("説明", infoFocus !== "phones", [desc, el("p", "note", "やらないこと: " + (b.nots.join("、") || "なし"))]),
+    accordion("覚えていること", false, [mem]), accordion("ルーティン", false, [rou]), accordion("スキル(みんなで共有)", false, [sk]),
+    accordion("つないだ電話", infoFocus === "phones", [ph, pair, warn]));
 }
-function openInfo(on, phones) { infoOpen = on; renderInfo(phones); document.getElementById("info").classList.toggle("open", on); }
+function openInfo(on, focus) { infoOpen = on; infoFocus = focus || null; document.getElementById("info").classList.toggle("open", on); if (on) renderInfo(); }
+
+// ---------- dialogs (focus moves in, Tab stays in, Esc closes, focus returns) ----------
+function modal(build) {
+  const opener = document.activeElement, scrim = el("div", "scrim"), dlg = el("div", "dialog"); dlg.setAttribute("role", "dialog"); dlg.setAttribute("aria-modal", "true");
+  const close = () => { scrim.classList.add("out"); later(() => scrim.remove(), 150); document.removeEventListener("keydown", onKey, true); opener?.focus?.(); };
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    if (e.key === "Tab") { const f = [...dlg.querySelectorAll("button, input, [tabindex='0']")].filter(x => !x.disabled); if (!f.length) return; const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } }
+  }
+  build(dlg, close); scrim.append(dlg); scrim.onclick = e => { if (e.target === scrim) close(); }; document.body.append(scrim);
+  document.addEventListener("keydown", onKey, true); (dlg.querySelector("[autofocus]") || dlg.querySelector("button, input"))?.focus();
+}
+function confirmDialog(title, body, ok, onOk) {
+  modal((dlg, close) => { dlg.classList.add("confirm"); const foot = el("div", "dlg-foot"), no = el("button", "btn btn-ghost", "やめる"), yes = el("button", "btn btn-danger", ok);
+    no.onclick = close; yes.onclick = () => { close(); onOk(); }; foot.style.justifyContent = "center"; foot.append(no, yes); dlg.append(el("h2", null, title), el("p", null, body), foot); no.autofocus = true; });
+}
+// The "new bot" dialog, after Grok Bot's: big avatar, name, 13 shapes, 11 colors, Cancel / Create.
+function avatarDialog(editing) {
+  modal((dlg, close) => {
+    const start = editing ? lookOf(editing) : { shape: "cloud", color: "blue" };
+    let shape = start.shape, color = start.color;
+    const prev = el("div", "preview"), name = el("input", "input name-in"); name.placeholder = "Bot に名前を付ける"; name.setAttribute("aria-label", "名前"); name.maxLength = 40;
+    if (editing) { name.value = editing.name; name.disabled = true; } else name.autofocus = true;
+    const draw = bump => { prev.textContent = ""; const a = avatar({ name: name.value || "x", shape, color }, "xxl", null); if (bump && !reduce()) a.classList.add("bump"); prev.append(a); };
+    const shapes = el("div", "shapes"); shapes.setAttribute("role", "radiogroup"); shapes.setAttribute("aria-label", "形");
+    Object.entries(SHAPES).forEach(([key, s]) => { const btn = el("button", "shape"); btn.type = "button"; btn.setAttribute("role", "radio"); btn.setAttribute("aria-label", s.label); btn.setAttribute("aria-checked", key === shape);
+      btn.append(avatar({ name: key, shape: key, color }, null, null)); btn.onclick = () => { shape = key; shapes.querySelectorAll(".shape").forEach(x => x.setAttribute("aria-checked", x === btn)); draw(true); }; shapes.append(btn); });
+    const colors = el("div", "colors"); colors.setAttribute("role", "radiogroup"); colors.setAttribute("aria-label", "色");
+    Object.entries(COLORS).forEach(([key, hex]) => { const btn = el("button", "color"); btn.type = "button"; btn.style.setProperty("--c", hex); btn.setAttribute("role", "radio"); btn.setAttribute("aria-label", key); btn.setAttribute("aria-checked", key === color);
+      btn.onclick = () => { color = key; colors.querySelectorAll(".color").forEach(x => x.setAttribute("aria-checked", x === btn)); shapes.querySelectorAll(".shape").forEach((s, i) => { s.textContent = ""; const k = Object.keys(SHAPES)[i]; s.append(avatar({ name: k, shape: k, color }, null, null)); }); draw(true); }; colors.append(btn); });
+    const foot = el("div", "dlg-foot"), cancel = el("button", "btn btn-ghost", "キャンセル"), ok = el("button", "btn btn-primary", editing ? "保存" : "作成");
+    const valid = () => editing || (/^[A-Za-z0-9_-]{1,40}$/.test(name.value) && !BOTS.some(b => b.name.toLowerCase() === name.value.toLowerCase()));
+    ok.disabled = !valid(); name.oninput = () => { ok.disabled = !valid(); draw(false); };
+    cancel.onclick = close;
+    ok.onclick = () => {
+      if (editing) { editing.shape = shape; editing.color = color; close(); renderAll(); toast("見た目を変えました", "check"); return; }
+      BOTS.push({ name: name.value, shape, color, status: "new", line: "まだ動いていません", desc: "", nots: [], memory: [], routines: [], talk: [] });
+      current = BOTS.length - 1; close(); swap(renderAll); toast(name.value + " を作りました", "check");
+    };
+    foot.append(cancel, ok);
+    dlg.append(el("h2", null, editing ? "見た目を変える" : "新しい Bot を作成"), prev, name, el("div", "label", "形"), shapes, el("div", "label", "色"), colors, foot);
+    draw(false);
+  });
+}
 
 function renderAll() { renderList(); renderChat(); if (infoOpen) renderInfo(); }
 
-// Filter pills with a sliding thumb.
-document.querySelectorAll(".seg button").forEach((btn, k) => btn.onclick = () => {
-  filter = btn.dataset.f;
-  document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", x === btn ? "true" : "false"));
-  document.getElementById("thumb").style.transform = "translateX(" + k * 100 + "%)";
-  renderList();
-});
-
-// Composer
+// ---------- composer ----------
 const say = document.getElementById("say"), sendBtn = document.getElementById("sendBtn");
 say.addEventListener("input", () => { sendBtn.disabled = !say.value.trim(); say.style.height = "auto"; say.style.height = say.scrollHeight + "px"; });
 say.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); document.getElementById("composer").requestSubmit(); } });
 document.getElementById("composer").addEventListener("submit", e => {
-  e.preventDefault();
-  const text = say.value.trim(); if (!text) return;
-  const b = bot(), idx = say.dataset.answerFor;
-  sendBtn.classList.remove("sent"); void sendBtn.offsetWidth; sendBtn.classList.add("sent");
-  say.value = ""; say.style.height = "auto"; sendBtn.disabled = true;
-  if (idx != null && b.talk[idx]) { delete say.dataset.answerFor; b.talk[idx].answered = text; b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: "届けました" }); renderAll(); return; }
-  const asleep = b.status === "asleep";
+  e.preventDefault(); const text = say.value.trim(); if (!text) return;
+  const b = bot(), idx = say.dataset.answerFor; sendBtn.classList.remove("fly"); void sendBtn.offsetWidth; sendBtn.classList.add("fly");
+  say.value = ""; say.style.height = "auto"; sendBtn.disabled = true; say.placeholder = b.name + " に話しかける…";
+  if (idx != null && b.talk[idx]) { delete say.dataset.answerFor; b.talk[idx].answered = text; b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: "届けました" }); if (!waits(b)) { b.status = "working"; b.line = "続きから作業中"; } renderAll(); return; }
+  const asleep = b.status === "asleep" || b.status === "new";
   b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: asleep ? "起きたら読みます" : "届けました" });
-  renderChat(); toast(asleep ? b.name + " は眠っています。起きたら読みます" : b.name + " に届けました");
+  if (b.status === "new") b.status = "asleep";
+  renderAll(); toast(asleep ? b.name + " は眠っています。起きたら読みます" : b.name + " に届けました", "check");
 });
 
 document.getElementById("headName").onclick = () => openInfo(!infoOpen);
-document.getElementById("phones").onclick = () => openInfo(true, true);
-document.getElementById("bell").onclick = () => { const i = BOTS.findIndex(b => b.status === "waiting"); if (i >= 0) swap(() => { current = i; renderAll(); }); };
-document.addEventListener("keydown", e => { if (e.key === "Escape" && infoOpen) openInfo(false); });
+document.getElementById("phones").onclick = () => openInfo(true, "phones");
+document.getElementById("newBot").onclick = () => avatarDialog(null);
+document.getElementById("bell").onclick = () => { const i = BOTS.findIndex(b => waits(b)); if (i >= 0) swap(() => { current = i; renderAll(); }); else toast("あなた待ちはありません", "check"); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && infoOpen && !document.querySelector(".scrim")) openInfo(false); });
 
-// Review-only controls.
+// ---------- review-only controls ----------
 document.getElementById("demoNote").onclick = () => {
-  const b = BOTS[0], n = el("div", "os-note"); n.setAttribute("role", "status");
-  const t = el("div"); t.append(el("small", null, "kantoku bot ・ いま"), el("b", null, b.name + " があなた待ち"), el("span", null, "開いて答えてください"));
-  n.append(face(b, "s"), t); document.body.append(n);
-  const close = () => { n.classList.add("out"); setTimeout(() => n.remove(), reduce() ? 0 : 350); };
-  n.onclick = () => { close(); swap(() => { current = 0; renderAll(); }); };
-  setTimeout(close, 5000);
+  const b = BOTS[0], n = el("button", "os-note"); const t = el("div"); t.append(el("small", null, "kantoku bot ・ いま"), el("b", null, b.name + " があなた待ち"), el("span", null, "開いて答えてください"));
+  n.append(avatar(b, null, null), t); document.body.append(n);
+  const close = () => { n.classList.add("out"); later(() => n.remove(), 250); };
+  n.onclick = () => { close(); swap(() => { current = 0; renderAll(); }); }; setTimeout(close, 5000);
 };
 document.getElementById("demoMotion").onclick = e => { const off = document.documentElement.dataset.motion !== "off"; document.documentElement.dataset.motion = off ? "off" : "on"; e.target.textContent = off ? "動きをもどす" : "動きを止める"; };
-document.getElementById("demoTheme").onclick = () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; };
+document.getElementById("demoTheme").onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; };
 
-document.getElementById("appIcon").append(face({ color: "#ffb3c7", status: "waiting" }, ""));
-document.getElementById("appIcon").firstChild.style.cssText = "width:22px;height:22px;animation:none";
+document.getElementById("appIcon").append(avatar({ name: "kantoku", shape: "cloud", color: "pink" }, "s", null));
 renderAll();
 </script>
 </body>

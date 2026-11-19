@@ -19,7 +19,10 @@ The user decides whether to keep using an app from its first look, so the first 
 ## What the user decided (fixed)
 
 - **Desktop first, then the phone.**
-- **Modern, with motion, and still cute.** Round faces and soft words stay. Screens slide, cards fold away, panels grow and shrink. All motion stops under `prefers-reduced-motion`. The mockups were rebuilt from references the designer collected (see "Look and motion").
+- **Modern, with motion, and still cute.** Soft words stay. Screens slide, cards fold away, panels grow and shrink. All motion stops under `prefers-reduced-motion`. The mockups were rebuilt from references the designer collected (see "Look and motion").
+- **One list, no tabs.** The bots are not split into "all / waiting / working".
+- **Grok Bot-style avatars.** Every manager has its own shape and color with two white eyes, picked in a "new bot" dialog modeled on Grok Bot's. One icon for everyone was too lonely.
+- **Built with the user's team design skill** (a private skill; its rules are summarized below).
 - **No PIN on the phone.** A paired phone writes as the user with nothing more. The user chose this after seeing the review's proof of what it allows. See "The risk the user accepted" and "Removing a phone".
 - **Secret cards work on the phone.** With the clipboard risk written down and a record of every phone registration shown on the PC.
 - PIN on every write and passkeys stay as options for a later stage, chosen in a setting.
@@ -30,14 +33,16 @@ The user decides whether to keep using an app from its first look, so the first 
 2. An OS notification fires for exactly two events, the same two Grok Bot has: **a manager waits for you** (a new question or secret card) and **a manager finished something** (a new report). Pressing it opens that manager's conversation.
 3. Notifications arrive while the app window is closed, as long as the PC and kantoku bot are running.
 4. From a phone (iOS and Android), outside the home network, the user can see every manager, read the conversation, answer a question, say something, and register a secret. Notifications reach the phone too.
-5. The first look is modern and moves, and keeps the cute faces and soft copy.
-6. The page stays unreachable from the public internet.
+5. The first look is modern and moves, and keeps the cute avatars and soft copy.
+6. Each manager has its own avatar, chosen when it is made, and it shows everywhere that manager appears.
+7. The page stays unreachable from the public internet.
 
 ## Non-goals (this design)
 
 - A tray icon. Grok Bot has one. A PWA cannot draw one; see "Later" for the optional shell.
 - Store apps (App Store, Play Store) and code signing.
-- Editing the description or memory from the phone. The phone shows them; the PC edits them.
+- Editing the description, memory, or avatar from the phone, or making a new bot there. The phone shows them; the PC edits them.
+- Starting a manager's session from kantoku bot. "作成" makes the files; the user starts it with `/kantoku <name>`.
 - Offline use. With the PC off, the phone shows "the PC is not reachable" and nothing else.
 - More notification kinds than the two above.
 
@@ -91,42 +96,90 @@ Rejected outright: binding to the LAN address (no HTTPS on a bare IP, so no serv
 
 ## Look and motion
 
-The user asked for a modern look with motion, collected from sites such as motionsites.ai. The designer looked through its Sites and Dashboards sections in Orca's built-in browser (no sign-in) and took these:
+The user asked for a modern look with motion, collected from sites such as motionsites.ai, and then, after seeing the first rebuild, asked for three changes: no tabs that split the list, a Grok Bot-style "new bot" dialog, and a different avatar for every manager. The design follows the user's team design skill (private, so only its rules are written here): tokens for color, spacing, radius, elevation, and type; motion with a purpose and fixed timings; every control working; the six states; accessibility; screenshots checked by the designer.
+
+References the designer looked at in Orca's built-in browser (no sign-in):
 
 | Reference (motionsites.ai) | What it shows | What kantoku bot takes |
 |---|---|---|
-| Iris Assistant (AI Assistant) | A glowing orb that breathes in the middle of a dark page | The face's aura: a soft halo that breathes while a bot waits for you, and a turning ring while it works |
+| Iris Assistant (AI Assistant) | A glowing orb that breathes in the middle of a dark page | The avatar's aura: a soft halo that pulses while a bot waits for you, and a turning ring while it works |
 | DeepThink (AI Assistant) | Chat bubbles that rise in one after another over a soft gradient, a rounded input bar | Bubbles rise and un-blur in sequence; the input is a floating glass pill |
-| Smart Home (Dashboard) | Frosted glass cards over a soft photo, rounded pill tabs | Frosted glass panels over slow color blobs; everything rounded |
-| Glassmorphic Feature Tabs (Tabs) | A highlight that slides between tabs | The `すべて / あなた待ち / 作業中` filter with a sliding thumb |
-| Dashboard UI (Dashboard) | White rounded tiles with soft shadows that lift on hover | List rows lift on hover and press in on tap; cards come in with a short stagger |
+| Smart Home (Dashboard) | Frosted glass cards over a soft photo | Frosted glass panels over slow color blobs |
+| Dashboard UI (Dashboard) | White rounded tiles with soft shadows that lift on hover | List rows lift on hover and press in on tap; rows come in with a short stagger |
 | Apex Program Accordion (Accordion) | Rows that open and close with height motion | Info sections fold open and closed; a question card folds its choices away once answered |
 
-The look in words (see both mockups):
+Plus Grok Bot's own "new bot" dialog, which the user showed: a big avatar, a name field, a grid of shapes, a row of colors, Cancel and Create.
 
-- **Background.** A pale gradient with three blurred color blobs that drift slowly. Panels are frosted glass (`backdrop-filter`) with a thin light border.
-- **Faces.** The same round pastel faces, with a shine, blush, and eye highlights. Waiting: the face breathes and a halo pulses. Working: a ring turns around it. Asleep: colors soften and a small "z" floats.
-- **Accent.** An orange-to-pink gradient for "waiting for you", the recommended choice, and the send button. Purple for secret cards. Green for working and "connected".
-- **Motion list.**
-  1. The window rises in on start.
-  2. List rows rise in with a 60 to 70 ms stagger; they lift on hover and press in on tap.
-  3. The filter thumb slides with a spring.
-  4. Switching bots uses a View Transition (a cross-fade) where the browser has it.
-  5. On the phone, the conversation slides in from the right and the list slides back and fades.
-  6. Bubbles rise in, scale up, and un-blur in sequence.
-  7. A question card's choices fold away after an answer, and a "✓ 答えた" chip pops in. A secret card folds the same way after Register.
-  8. The info panel grows out to the right on the PC; on the phone it springs up from the bottom as a sheet.
-  9. Info sections fold open and closed (grid rows `1fr` to `0fr`, no height measuring).
-  10. The waiting count pops when it changes. The send button gives a small twist when it sends.
-  11. Notifications slide in (PC preview) or drop in (phone lock screen).
-- **Motion off.** Under `prefers-reduced-motion: reduce`, every animation and transition stops and View Transitions are skipped; every state still shows, it just does not move. The mockups also have a "動きを止める" button to check this.
-- **Speed.** Most moves take 0.3 to 0.55 s. Springs overshoot a little (`cubic-bezier(.34, 1.56, .64, 1)`); fades and slides ease out. Nothing loops except the face states, the connection dot, and the background blobs, which move slowly.
+### Tokens
+
+- **Color.** Primary ink `#15192a` (dark theme `#eef1f8`). Accent: an orange-to-pink gradient `#ff6a3d → #ff3d7f` for "waiting for you", the recommended choice, and the send button. Purple `#7c5cff` for secret cards. Green `#1a9e6a` for working and "connected". Status colors ok, warn, danger. Light and dark themes swap only the variables.
+- **Spacing.** 4 px steps only: 4, 8, 12, 16, 20, 24, 32.
+- **Radius.** 10 (inputs, small buttons), 16 (cards, rows), 24 (window, composer, phone rows), 32 (dialogs, phone sheet).
+- **Elevation.** 0 flat with a border; 1 rows and bubbles; 2 hover, the composer, the selected row; 3 dialogs and the window.
+- **Type.** Page title 26 to 28 / 800 with `-0.03em`; card title 16 / 700; body 14 / 400 with `-0.01em`; caption 12 / 500 muted; mono 12.5 for commands. Rounded system fonts, nothing loaded from outside (the skill's Pretendard is a Korean web font; kantoku bot loads no fonts).
+- **Icons.** One line set (Lucide-style paths, stroke 1.9), inline SVG. No emoji as icons.
+
+### One list
+
+The bot list is one list with no tabs or filters. It sorts: waiting for you first, then working, then not started, then asleep; ties keep their order. Each row is the avatar (with its status ring or halo and a status dot), the name, the last line, and a badge when something waits: orange "あなた待ち", purple "秘密", gray "新しい".
+
+### Avatars
+
+Every manager has its own avatar, a shape in a color with two tall white eyes, the way Grok Bot's bots look.
+
+- **13 shapes:** circle, rounded square, capsule, diamond, triangle, star, flower, four-leaf clover, cloud, drop, hexagon, heart, egg.
+- **11 colors:** black `#26262b`, brown `#8d5b3c`, red `#e5484d`, orange `#f76b15`, amber `#ffb224`, green `#30a46c`, teal `#12a594`, blue `#3e63dd`, purple `#8e4ec6`, pink `#e93d82`, gray `#8b8d98`.
+- Drawn as one inline SVG in a 100 by 100 box. Each shape knows where its eyes sit. The eyes blink about every 6 seconds, each avatar at its own offset. Asleep: the eyes become two closed arcs and the color softens.
+- Status around the avatar: a halo pulses while it waits for you, a green ring turns while it works, a small dot shows the status in color, and the status word says it in text.
+- **Where it shows:** the list, the conversation header and bubbles, the info panel (large, with "見た目を変える"), the phone list, conversation, and sheet, OS notifications (the notification icon is that bot's avatar), and the PC title bar for kantoku bot itself.
+- **Stored** in `~/.kantoku/<name>/bot/avatar.json` as `{"shape":"cloud","color":"pink"}`. kantoku bot is its only writer; it sits in kantoku bot's own `bot/` folder, so no manager file changes. A manager with no `avatar.json` gets a shape and color from a stable hash of its name, so existing managers already look different from each other.
+
+### The "new bot" dialog
+
+The title bar's "+" opens it (only on the PC):
+
+- A big avatar preview at the top that changes as the user picks.
+- "Bot に名前を付ける": the manager name. It must match `^[A-Za-z0-9_-]{1,40}$` and not be taken; "作成" stays disabled until it does.
+- **Shapes:** a 7-column grid of the 13 shapes in the chosen color. The chosen one gets a soft round frame.
+- **Colors:** a row of 11 round swatches. The chosen one gets a double ring.
+- "キャンセル" and "作成". White, large rounded card (radius 32). It traps focus, closes on Esc and on the backdrop, and puts focus back on "+".
+- **Create** makes `~/.kantoku/<name>/` from the kantoku templates (profile.md and state.md with the name filled in) plus `bot/avatar.json`. It does not start a session. The new bot shows in the list as "新しい", and its conversation shows the empty state: "<name> はまだ動いていません", the command `/kantoku <name>`, and "命令を写す". Starting the session from kantoku bot is left for later.
+- The same dialog, opened from the info panel's "見た目を変える", edits the avatar of an existing bot. The name is fixed there.
+
+### Motion
+
+- **Timings** (from the skill): hover, press, and color 150 to 200 ms; folds, tabs, and toggles 200 to 300 ms; dialogs, sheets, and screen changes 300 to 400 ms; stagger 50 ms, at most 12 items; leaving takes about 70% of entering. Two curves: `--ease` `cubic-bezier(.22, 1, .36, 1)` and `--spring` `cubic-bezier(.34, 1.56, .64, 1)`.
+- **What moves:**
+  1. The window rises in and un-blurs on start.
+  2. List rows rise in with a stagger; they lift on hover and press in on tap.
+  3. Switching bots uses a View Transition (a cross-fade) where the browser has it, and the conversation rises in.
+  4. On the phone, the conversation slides in from the right and the list slides back and fades.
+  5. Bubbles rise in and un-blur in sequence.
+  6. A question card's choices fold away after an answer, and a "答えた" chip pops in. A secret card folds the same way after "登録", with "登録中…" while it runs.
+  7. The info panel grows out to the right on the PC; on the phone it springs up from the bottom as a sheet.
+  8. Info sections fold open and closed (grid rows `1fr` to `0fr`, no height measuring).
+  9. The dialog pops in; the avatar preview gives a small bump when the shape or color changes.
+  10. The waiting count pops when it changes; the send button hops when it sends.
+  11. Notifications slide in (PC) or drop in (phone lock screen).
+- **What loops:** only the status ring and halo, the eye blink, the connection dot, and the background blobs (30 s). Body text, inputs, and tables never move.
+- **Motion off.** Under `prefers-reduced-motion: reduce`, every animation and transition ends at once and View Transitions are skipped; every state still shows. The mockups have a "動きを止める" button to check this.
+
+### States
+
+| State | Where |
+|---|---|
+| Loading | "登録中…" on the secret card's button while the command runs |
+| Empty | A new bot's conversation (avatar, one line, the command, "命令を写す"); "まだありません" in empty info sections |
+| Success | A toast, a "答えた" or "登録しました" chip |
+| Error | "PC に届きません" in the phone's connection pill; "ほかで変わっていました。もう一度どうぞ" on a 409 (from the kantoku bot design) |
+| Confirm | "my phone を外しますか?" with the device name, before removing a phone |
+| Skeleton | Not used: everything is local and arrives in one read |
 
 ## The desktop app (stages 1 and 2)
 
 ### Install
 
-- `bot/page/manifest.webmanifest`: `name` "kantoku bot", `display` "standalone", `start_url` "/", theme colors from the page tokens, icons at 192 and 512 px (a round pastel face, drawn as PNG from the SVG face).
+- `bot/page/manifest.webmanifest`: `name` "kantoku bot", `display` "standalone", `start_url` "/", theme colors from the page tokens, icons at 192 and 512 px (kantoku bot's own avatar, drawn as PNG from the SVG).
 - `bot/page/sw.js`: the service worker. It caches only `bot.js`, `links.js`, `bot.css`, the manifest, and the icons, so the window opens fast. It never caches `/`, because `/` carries the per-start token and a cached copy would hold a dead token after the next start (every write would then get 403). It never caches `/api/*`. It shows notifications and opens the right conversation on click.
 - **One origin.** The local listener answers `GET /` on `localhost:<port>` with a redirect to `127.0.0.1:<port>`, and serves the manifest only on `127.0.0.1`. Two origins would install two apps with two service workers, and each notice would show twice.
 - The page shows a small "Install as app" button when the browser fires `beforeinstallprompt` (Chrome, Edge). Safari users get a one-line hint.
@@ -308,12 +361,12 @@ What the card does about it:
 See the phone mockup. In words:
 
 - **Two screens, not two columns.** The bot list fills the screen; pressing a row slides the conversation in; `‹` slides it back. The PC's two-column layout is kept above 720 px.
-- **List** is glass cards with the face, name, last line, and a pill: orange "あなた待ち", purple "秘密". The filter pills sit above it.
-- **Header** in a conversation: round back button, small face, name, status. Pressing the name springs the info sheet up from the bottom (a floating sheet with a grab bar and folding sections).
+- **List** is one list of glass cards with the avatar, name, last line, and a badge: orange "あなた待ち", purple "秘密". No tabs.
+- **Header** in a conversation: round back button, small avatar, name, status. Pressing the name springs the info sheet up from the bottom (a floating sheet with a grab bar and folding sections).
 - **Question cards** have a gradient border and stack their choices full width, recommended first and filled, each at least 44 px tall.
 - **Input** is a floating glass pill with 16 px text, so iOS does not zoom on focus; the send button is a round `↑`.
 - **Connection pill** in the list header: a pulsing green dot and `家の PC` while reachable, `PC に届きません` when the last request failed.
-- **Pairing screen**: one face, a short line, six digit boxes, the warning, one button; a green check pops in when paired.
+- **Pairing screen**: kantoku bot's avatar, a short line, six digit boxes, the warning, one button; a green check pops in when paired.
 - **Notifications** use the same two titles as the desktop and no file text.
 
 ## Safety summary
@@ -351,6 +404,8 @@ Only the PC can change it. Turning it on asks each paired phone to set its PIN o
 |---|---|
 | `bot/page/manifest.webmanifest`, `bot/page/sw.js`, `bot/page/icon-192.png`, `bot/page/icon-512.png` | New |
 | `bot/page/bot.js`, `bot/page/bot.css`, `bot/page/index.html` | New look and motion, install and notifications buttons, phone layout, pairing screen, phone list in the info panel, secret record line |
+| `bot/avatar.ts` | New: the 13 shapes, 11 colors, the default from the name hash, read and write `bot/avatar.json` |
+| `bot/create.ts` | New: make a manager's home from the templates (local only) |
 | `bot/notices.ts` | New, pure |
 | `bot/webpush.ts` | New, VAPID and `aes128gcm` |
 | `bot/devices.ts` | New: pairing codes, device store |
@@ -374,6 +429,8 @@ Only the PC can change it. Turning it on asks each paired phone to set its PIN o
 - Notifications carry the bot name and a fixed phrase, never text from the files.
 - Device cookies last 30 days from last use.
 - The desktop mockup is a new file (`kantoku-app-desktop.html`); `kantoku-bot.html` stays as the record of the current page.
+- The designer made one design, not the skill's default of six to compare, because the user had named the target (Grok Bot's dialog and look).
+- Avatars live in kantoku bot's own `bot/avatar.json`, not in profile.md, so the manager's files do not change.
 
 ## Later
 

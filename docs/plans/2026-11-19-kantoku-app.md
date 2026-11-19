@@ -61,14 +61,16 @@
 
 **Evidence:** browser, version, and the result of each call pasted in the task report; the spec's "Install" section updated with the result.
 
-### Task 2: New look and motion
+### Task 2: New look, avatars, and the "new bot" dialog
 
 **Files:**
-- Modify: `bot/page/bot.css`, `bot/page/bot.js`, `bot/page/index.html`
-- Test: `bot/page.spec.ts`
+- Create: `bot/avatar.ts`, `bot/create.ts`
+- Modify: `bot/page/bot.css`, `bot/page/bot.js`, `bot/page/index.html`, `bot/read.ts` (`Bot.avatar`), `bot/server.ts` (`POST /api/avatar`, `POST /api/bots`, local only)
+- Test: `bot/avatar.spec.ts`, `bot/create.spec.ts`, `bot/server.spec.ts`, `bot/page.spec.ts`
 
 **Interfaces:**
-- Consumes: the current page and `Bots` JSON, unchanged.
+- Consumes: the current page and `Bots` JSON; the templates in `skills/kantoku/templates/`.
+- Produces (data): `type Shape = 'circle' | 'square' | 'capsule' | 'diamond' | 'triangle' | 'star' | 'flower' | 'clover' | 'cloud' | 'drop' | 'hexagon' | 'heart' | 'egg'`, `type Color = 'black' | 'brown' | 'red' | 'orange' | 'amber' | 'green' | 'teal' | 'blue' | 'purple' | 'pink' | 'gray'`, `Bot.avatar: { shape: Shape; color: Color }`, `avatarOf(name: string, file: string): Promise<{ shape; color }>` (file, else the name hash), `setAvatar(home, look)`, `createBot(root, name, look): Promise<'ok' | 'taken' | 'bad-name'>`.
 - Produces: the look of `docs/mockups/kantoku-app-desktop.html` on the real page: CSS tokens (`--glass`, `--glass-strong`, `--accent`, `--accent-2`, `--lock`, `--spring`, `--ease`), face states (`.face.waiting`, `.face.working`, `.face.asleep`), the `.fold` folding pattern, and `swap(fn)` (View Transition when allowed, plain call otherwise).
 
 - [ ] **Step 1: Write the failing tests**
@@ -76,16 +78,22 @@
 ```ts
 test('bot.css has a prefers-reduced-motion block that stops every animation and transition', ...)
 test('bot.js skips startViewTransition when reduced motion is on', ...)       // static check of swap()
-test('the filter has three pills: すべて, あなた待ち, 作業中', ...)
+test('the list has no tabs or filters and sorts waiting, working, new, asleep', ...)
+test('avatarOf returns the saved look, else a stable look from the name hash', ...)
+test('POST /api/avatar writes only bot/avatar.json and refuses an unknown shape or color', ...)
+test('POST /api/bots makes the home from the templates with the name filled in, plus avatar.json, and refuses a taken or bad name', ...)
+test('avatar routes and create are local only (remote → 404)', ...)
+test('the dialog traps focus, closes on Esc, and returns focus to +', ...)  // page.spec static check of the modal helper
+test('a new bot shows the empty state with /kantoku <name> and a copy button', ...)
 test('an answered question card renders its choices inside a closed .fold and a "答えた" chip', ...)
 test('the page still loads nothing from outside (no http: or https: in css, html or js except links.js targets)', ...)
 ```
 
 - [ ] **Step 2:** Run `node --test bot/page.spec.ts`. Expected: FAIL.
-- [ ] **Step 3:** Port the desktop mockup's CSS and the motion list in the spec's "Look and motion" to `bot/page/`. Keep every behavior and label the page has today; change only the look, the filter pills, and the folding.
+- [ ] **Step 3:** Port the desktop mockup's tokens, avatars, dialog, and the motion list in the spec's "Look and motion" to `bot/page/`, following the spec's tokens, timings, six states, and accessibility rules. Keep every behavior and label the page has today.
 - [ ] **Step 4:** Run `node --test bot/`. Expected: pass.
-- [ ] **Step 5:** Manual: open the page with a fixture `--root`; check each of the 11 moves in the spec's motion list, then turn on the OS "reduce motion" setting and check that nothing moves and every state still shows. Ask the user to look before committing (first impression is theirs to judge).
-- [ ] **Step 6:** Commit `feat(bot): new look with motion`.
+- [ ] **Step 5:** Manual: open the page with a fixture `--root`; make a bot in the dialog and change another bot's look; check each of the 11 moves in the spec's motion list, then turn on the OS "reduce motion" setting and check that nothing moves and every state still shows. Ask the user to look before committing (first impression is theirs to judge).
+- [ ] **Step 6:** Commit `feat(bot): new look, avatars, and the new bot dialog`.
 
 **Evidence:** test output; a short screen recording or screenshots of each move with fixture data; the user's OK.
 
@@ -446,5 +454,5 @@ test('with passkey, a write without a fresh assertion → 401', ...)
 
 ## Self-review against the spec
 
-- Every spec section maps to a task: look and motion (Task 2), install and one origin (Task 4), login item and launcher (Task 5), notices and badge (Tasks 3, 4), push (Tasks 6, 7), road and checks (Tasks 8, 10), pairing and removing a phone (Tasks 9, 10, 11, 13), phone actions and 404 routes (Task 10), `via` and the PC record (Tasks 10, 11), secret cards on the phone with the clipboard measures (Tasks 10, 12), layout (Task 12), the accepted risk and removal steps in the README (Task 13), lock options (Tasks 14, 15).
+- Every spec section maps to a task: look, motion, avatars, and the new bot dialog (Task 2), install and one origin (Task 4), login item and launcher (Task 5), notices and badge (Tasks 3, 4), push (Tasks 6, 7), road and checks (Tasks 8, 10), pairing and removing a phone (Tasks 9, 10, 11, 13), phone actions and 404 routes (Task 10), `via` and the PC record (Tasks 10, 11), secret cards on the phone with the clipboard measures (Tasks 10, 12), layout (Task 12), the accepted risk and removal steps in the README (Task 13), lock options (Tasks 14, 15).
 - The adversarial review's findings each have a test: ids, secret card, and no text (Task 3); token, one origin, fixed strings (Task 4); newest version (Task 5); one subscription per endpoint and drop while visible (Task 7); every POST checked and the same-site form (Task 10). The finding the user accepted (no PIN) has its setting in Task 14.
