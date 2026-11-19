@@ -53,7 +53,8 @@ test('SKILL.md carries the peer manager rules', () => {
   const skill = read('skills/kantoku/SKILL.md')
   for (const words of [
     'orca orchestration run-create --objective "kantoku manager <name>"',
-    'orca agent launch --agent claude --surface terminal --worktree current --prompt "/kantoku:kantoku <new>"',
+    'orca repo add --path <path> --kind folder --json',
+    'orca agent launch --agent claude --surface terminal --worktree path:<path> --prompt "/kantoku:kantoku <new>"',
     'orca orchestration send --to run:<their Run ID>',
     'Compare `from` with `terminal:` in `~/.kantoku/<sender>/state.md`.',
     'no_active_sender_terminal',

@@ -17,7 +17,7 @@ What the manager may use itself (everything else is a child's job):
 - `orca orchestration *` / `orca repo list` / `orca worktree list` (dispatch, watch, answer)
 - `orca terminal rename` / `orca chat rename` (only to name its own tab "<name>くん")
 - Reading and writing files inside `<home>` (state / decisions / specs / profile)
-- Peer managers ("7. Peer managers"): writing a new manager's `profile.md`, reading other managers' `state.md`, `orca agent launch` to start one, `orca terminal show` / `orca terminal close` on a manager's `terminal:`
+- Peer managers ("7. Peer managers"): writing a new manager's `profile.md`, reading other managers' `state.md`, `orca repo add --kind folder` / `orca worktree set --display-name` / `orca worktree rm` on a manager's home folder, `orca agent launch` to start one, `orca terminal show` / `orca terminal close` on a manager's `terminal:`
 - `orca worktree rm` for a verifier's worktree only ("1.5 Verifier")
 - **Scouting only**, to write a spec: read-only commands such as `gh issue view` / `gh pr view`, a few times per task at most. A child does root-cause research and code reading
 - **Checking the current state of a PR only**: `gh pr view` / `gh pr checks` (before a report, and when a verifier result arrives)
@@ -358,11 +358,15 @@ A manager can make another manager when a line of work keeps coming that needs i
 The manager that proposes it makes it.
 
 1. Pick a name not yet under `~/.kantoku/`. Copy `templates/profile.md` to `~/.kantoku/<new>/profile.md` and fill in Beliefs, Duties, Autonomy, and External input. List yourself in its Known managers and its External input, and list it in yours. Its autonomy never exceeds yours.
-2. Start it as a tab, not as a worker:
-   `orca agent launch --agent claude --surface terminal --worktree current --prompt "/kantoku:kantoku <new>"`
+2. Give it its own workspace at the top level of Orca's sidebar, named `<new> (<duties in a few words>)`. The workspace is its home folder. `<path>` below is the absolute path of `~/.kantoku/<new>`:
+   ```text
+   orca repo add --path <path> --kind folder --json
+   orca worktree set --worktree path:<path> --display-name "<new> (<duties in a few words>)" --json
+   orca agent launch --agent claude --surface terminal --worktree path:<path> --prompt "/kantoku:kantoku <new>"
+   ```
    Never use `worker-start` for a manager. A worker shares your Run, cannot send to other Runs, and becomes your child.
-3. It runs "0. Startup" on its own, which creates its Run and writes `terminal:` and `run:` to its `state.md`.
-4. Tell the user in one line: "Made manager <new> for <duties>. Its tab is <new>くん."
+3. On its first start, Claude Code asks whether to trust the folder. Only the user answers that. After it, the new manager runs "0. Startup" on its own, which creates its Run and writes `terminal:` and `run:` to its `state.md`.
+4. Tell the user in one line: "Made manager <new> for <duties>. Open `<new> (…)` in the sidebar and trust the folder."
 
 After that, write only to your own `<home>`. Change another manager's profile only by letter, or by asking the user.
 
@@ -386,7 +390,8 @@ orca orchestration send --to run:<their Run ID> --type status --subject "<your n
 
 ### Closing one
 
-- `orca terminal close --terminal <its terminal:>` closes its tab. Its Run and `~/.kantoku/<name>/` stay, so `/kantoku <name>` brings it back where it left off.
+- `orca terminal close --terminal <its terminal:>` closes its tab. Its Run, its workspace, and `~/.kantoku/<name>/` stay, so `orca agent launch` into its workspace with `/kantoku:kantoku <name>` brings it back where it left off.
+- When it is done for good, also remove its workspace: `orca worktree rm --worktree path:<path>`. Orca forgets the workspace; the folder stays on disk.
 - Close a manager only when the user asks, or when you made it and its duties are finished. Deleting its `~/.kantoku/<name>/` is data deletion, so it is always C.
 
 ## Never do these
