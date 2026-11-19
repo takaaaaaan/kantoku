@@ -3,6 +3,9 @@
 <!-- On the first `/kantoku <name>` startup, copy this to ~/.kantoku/<name>/profile.md and fill it in.
      The manager starts no child until this is filled in. -->
 
+## Beliefs
+<!-- What this manager puts above every decision, in a few lines. When unsure, it decides by these. Example: "Ship small. Never leave a child idle." -->
+
 ## Duties
 <!-- The work given to this manager, in 1 to 3 sentences. Example: "Move the issues of web app X forward" -->
 
@@ -40,6 +43,13 @@
 | (Example) chat #requests channel | Config change requests | Put in the queue |
 | (Example) GitHub Actions | CI failure notices | Put in the queue (dispatch a child to find the cause) |
 | kantoku-watch | CI, review, comment, merge notices | Not a task. The owner child already got the details; check `gh pr view` before acting on the summary |
+| (Example) manager watch | Requests about PR watching | Put in the queue |
+
+## Known managers
+<!-- Other managers this one writes letters to (see "7. Peer managers" in SKILL.md). Their address is in ~/.kantoku/<name>/state.md -->
+| Name | What it does |
+|---|---|
+| | |
 
 ## Language
 <!-- Example: chat in Japanese. Commit messages and PRs in English -->

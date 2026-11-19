@@ -34,6 +34,7 @@ kantoku is that attempt.
 - **Named managers.** `/kantoku infra` and `/kantoku web` keep separate jobs and state. The tab is titled `<name>くん`.
 - **Patrol.** A 30-minute fallback patrol that stops itself after three patrols with no change.
 - **External input.** A Discord bot, GitHub Actions, or cron can wake the manager with `orca orchestration send`.
+- **Peer managers.** A manager can make another manager for a new line of work, with its own beliefs, duties, and autonomy. Managers write letters to each other's Run, and each checks who a letter is from before acting on it.
 - **PR watching.** CI results, reviews, comments, and merges on a child's PR reach that child within seconds, with a one-line summary to its manager.
 
 ## Requirements
