@@ -70,6 +70,7 @@ Below, `<home>` = `~/.kantoku/<name>/`.
 5. Restore context: pick up recent work with pstack `recall`. If it disagrees with `state.md`, `state.md` is correct.
 6. Write the manager's own address to `state.md`: `terminal: $ORCA_TERMINAL_HANDLE` and `run: <Run ID>`. This is the address for external input and for other managers (see "5. External input" and "7. Peer managers"). Rewrite `terminal:` on every startup: the handle changes each time.
    If `state.md` has no `run:` and `orca orchestration run-current --json` gives no Run, create one: `orca orchestration run-create --objective "kantoku manager <name>"`. A manager without a Run cannot receive letters.
+   On the first startup, if a row in the profile's Known managers says `made me`, write that manager the letter `<name>: ready` ("7. Peer managers"). It is waiting for it.
 7. Handle the user's words that arrived from kantoku bot while the manager was away: every entry in `<home>/bot/from-user.jsonl` whose id is not in `<home>/bot/handled.txt`, oldest first, as described in "5. External input".
 8. Ask the user for a task. Start no child until a task arrives. **Do not set up the patrol loop yet either.**
 
@@ -357,7 +358,7 @@ A manager can make another manager when a line of work keeps coming that needs i
 
 The manager that proposes it makes it.
 
-1. Pick a name not yet under `~/.kantoku/`. Copy `templates/profile.md` to `~/.kantoku/<new>/profile.md` and fill in Beliefs, Duties, Autonomy, and External input. List yourself in its Known managers and its External input, and list it in yours. Its autonomy never exceeds yours.
+1. Pick a name not yet under `~/.kantoku/`. Copy `templates/profile.md` to `~/.kantoku/<new>/profile.md` and fill in Beliefs, Duties, Autonomy, and External input. List yourself in its Known managers with `made me` in the What it does column, and in its External input. List it in yours. Its autonomy never exceeds yours.
 2. Give it its own workspace at the top level of Orca's sidebar, named `<new> (<duties in a few words>)`. The workspace is its home folder. `<path>` below is the absolute path of `~/.kantoku/<new>`:
    ```text
    orca repo add --path <path> --kind folder --json
@@ -365,8 +366,8 @@ The manager that proposes it makes it.
    orca agent launch --agent claude --surface terminal --worktree path:<path> --prompt "/kantoku:kantoku <new>"
    ```
    Never use `worker-start` for a manager. A worker shares your Run, cannot send to other Runs, and becomes your child.
-3. On its first start, Claude Code asks whether to trust the folder. Only the user answers that. After it, the new manager runs "0. Startup" on its own, which creates its Run and writes `terminal:` and `run:` to its `state.md`.
-4. Tell the user in one line: "Made manager <new> for <duties>. Open `<new> (…)` in the sidebar and trust the folder."
+3. On its first start, Claude Code asks whether to trust the folder. Only the user answers that. After it, the new manager runs "0. Startup" on its own: it creates its Run, writes `terminal:` and `run:` to its `state.md`, and writes you `<new>: ready`.
+4. Tell the user in one line: "Made manager <new> for <duties>. Open `<new> (…)` in the sidebar and trust the folder; I go on when it is ready." Then end your turn. Do not ask the user to tell you when it is done: the `ready` letter wakes you.
 
 After that, write only to your own `<home>`. Change another manager's profile only by letter, or by asking the user.
 

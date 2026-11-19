@@ -58,6 +58,7 @@ test('SKILL.md carries the peer manager rules', () => {
     'orca orchestration send --to run:<their Run ID>',
     'Compare `from` with `terminal:` in `~/.kantoku/<sender>/state.md`.',
     'no_active_sender_terminal',
+    'write that manager the letter `<name>: ready`',
     'dispatch_run_mismatch',
     'worker-release --dispatch <verifier dispatch ID>',
   ])
