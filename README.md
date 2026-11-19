@@ -35,6 +35,7 @@ kantoku is that attempt.
 - **Patrol.** A 30-minute fallback patrol that stops itself after three patrols with no change.
 - **External input.** A Discord bot, GitHub Actions, or cron can wake the manager with `orca orchestration send`.
 - **Peer managers.** A manager can make another manager for a new line of work, with its own beliefs, duties, and autonomy. Managers write letters to each other's Run, and each checks who a letter is from before acting on it.
+- **Routines.** Work at set times, written as a table in `profile.md` and run by Orca automations, so it survives closing the session.
 - **PR watching.** CI results, reviews, comments, and merges on a child's PR reach that child within seconds, with a one-line summary to its manager.
 
 ## Requirements
@@ -159,6 +160,25 @@ Where each part of the page comes from:
 | Memory | `memory.md`, one fact per bullet |
 | Routines | the `Routines` table in `profile.md` |
 | Skills | `Extra skills` in every `profile.md` |
+
+## Routines
+
+Work that comes at set times, such as a morning mail digest or a weekday look at the queue, goes in the `## Routines` table of the manager's `profile.md`:
+
+```markdown
+## Routines
+Timezone: Asia/Seoul
+| Name | When | What | Wake | Quiet when |
+|---|---|---|---|---|
+| morning-digest | 44 8 * * * | Sum up the morning mail | child | nothing needs action |
+| standup | 50 8 * * 1-5 | Look at today's queue | manager | the queue is empty |
+```
+
+- **When** is a 5-field cron. **Wake** says who acts: `manager` sends the manager a letter and starts no agent; `child` has Orca start a Claude that does What and leaves its result in `~/.kantoku/<name>/routines/inbox/`.
+- **Quiet when** keeps a nothing-to-say result out of the reports.
+- After a change, the manager dispatches a child to run `node <plugin root>/routines/cli.ts sync <name>`. It makes one Orca automation per row, named `kantoku:<name>:<routine>`, and removes the ones whose row is gone. Running it again changes nothing. Routines run in `~/.kantoku-routines`, a small git repo the first sync creates and adds to Orca.
+- If the manager is not running, the routine waits in its inbox until the next start. If Orca is not running, Orca runs a missed routine once when it comes back, within 12 hours. Start Orca at login to keep this working.
+- A routine child follows the manager's autonomy. With `ask`, it writes nothing outside and proposes instead.
 
 ## Tips
 

@@ -45,6 +45,16 @@
 | kantoku-watch | CI, review, comment, merge notices | Not a task. The owner child already got the details; check `gh pr view` before acting on the summary |
 | (Example) manager watch | Requests about PR watching | Put in the queue |
 
+## Routines
+<!-- Work that comes at set times (see "8. Routines" in SKILL.md). One row is one Orca automation. After changing this table, dispatch a child to run sync.
+     Name: lowercase letters, digits, hyphens. When: 5-field cron in the Timezone below (empty: this PC's). Avoid minute 0.
+     Wake: `manager` (a letter wakes this manager) or `child` (Orca starts a Claude that does What; full instructions may go in routines/<Name>.md).
+     Quiet when: the result is not worth telling. Example row: | standup | 50 8 * * 1-5 | Look at today's queue | manager | the queue is empty | -->
+Timezone:
+| Name | When | What | Wake | Quiet when |
+|---|---|---|---|---|
+| | | | | |
+
 ## Known managers
 <!-- Other managers this one writes letters to (see "7. Peer managers" in SKILL.md). Their address is in ~/.kantoku/<name>/state.md -->
 | Name | What it does |

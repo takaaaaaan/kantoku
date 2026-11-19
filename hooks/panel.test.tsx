@@ -26,6 +26,13 @@ Improve kantoku.
 ## Autonomy
 - External writes: auto
 - merge: after-verifier
+
+## Routines
+Timezone: Asia/Seoul
+| Name | When | What | Wake | Quiet when |
+|---|---|---|---|---|
+| standup | 50 8 * * 1-5 | Look at the queue | manager | the queue is empty |
+| digest | 0 9 * * * | Sum up mail | child | |
 `,
   [`${HOME}/.kantoku/web/state.md`]: 'terminal: term_other\n',
 }
@@ -120,6 +127,7 @@ test('a manager session opens the panel with its profile and tasks', async ($, o
     expect((await ui.find({ type: 'Text', text: /writes/ }))?.text).toBe(
       'writes: auto · merge: after-verifier',
     )
+    expect((await ui.find({ type: 'Text', text: /routines/ }))?.text).toBe('routines: standup 50 8 * * 1-5 · digest 0 9 * * *')
     expect((await ui.find({ type: 'Text', text: /English/ }))?.text).toBe('□ English docs (in progress)')
     expect((await ui.find({ type: 'Text', text: /Build/ }))?.text).toBe('□ Build the mod (queued)')
     expect((await ui.find({ type: 'Text', text: /Launch/ }))?.text).toBe('☑ Launch and profile')

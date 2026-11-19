@@ -76,6 +76,7 @@ test('parseProfile reads the first sentence of the job and the autonomy (Japanes
     job: 'OSS の skill「kantoku」の改善。',
     externalWrites: 'auto',
     merge: 'after-verifier',
+    routines: [],
   })
 })
 
@@ -84,6 +85,7 @@ test('parseProfile skips comments and bullets (English template)', () => {
     job: 'Move the issues of the web app forward.',
     externalWrites: 'ask',
     merge: 'never',
+    routines: [],
   })
 })
 
@@ -97,7 +99,24 @@ test('parseProfile of an unfilled template leaves fields empty', () => {
     job: '',
     externalWrites: undefined,
     merge: undefined,
+    routines: [],
   })
+})
+
+test('parseProfile reads the Routines table by column name, and skips the empty template row', () => {
+  const text = `## ルーティン
+Timezone: Asia/Seoul
+| 起こす相手 | 名前 | 時刻 | やること | 黙る条件 |
+|---|---|---|---|---|
+| manager | standup | 50 8 * * 1-5 | 待ち列を見る | 待ち列が空 |
+| | | | | |
+`
+  expect(parseProfile(text).routines).toEqual([{ name: 'standup', when: '50 8 * * 1-5' }])
+  expect(parseProfile(`## Routines
+| Name | When | What | Wake | Quiet when |
+|---|---|---|---|---|
+| | | | | |
+`).routines).toEqual([])
 })
 
 test('parseState reads the task table and the queue (Japanese)', () => {
