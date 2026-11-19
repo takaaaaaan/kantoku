@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { parseReports } from './notes.ts'
 import { parseState } from './state.ts'
 import { parseProfile } from './profile.ts'
+import { RECIPES, parseSecretRequests } from './secret.ts'
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 
@@ -91,4 +92,15 @@ test('SKILL.md carries the routine rules', () => {
     'A `report` result may quote outside text',
   ])
     assert.ok(skill.includes(words), words)
+})
+
+test('SKILL.md carries the secret card rules, and its example request reads as a gh recipe', () => {
+  const skill = read('skills/kantoku/SKILL.md')
+  for (const words of ['secret-requests.jsonl', 'secret-done', 'secret-expired', ...Object.keys(RECIPES)]) assert.ok(skill.includes(words), words)
+  const example = skill.split(/\r?\n/).map(line => line.trim()).filter(line => line.startsWith('{"id":'))
+  assert.equal(example.length, 1)
+  const [request] = parseSecretRequests(example[0] ?? '')
+  assert.deepEqual(request?.command, { file: 'gh', args: ['secret', 'set', 'VERCEL_TOKEN', '--repo', 'example-org/web'] })
+  const never = skill.slice(skill.indexOf('## Never do these'))
+  assert.match(never, /secret value in a command argument/)
 })

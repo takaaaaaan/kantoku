@@ -36,6 +36,7 @@ kantoku is that attempt.
 - **External input.** A Discord bot, GitHub Actions, or cron can wake the manager with `orca orchestration send`.
 - **Peer managers.** A manager can make another manager for a new line of work, with its own beliefs, duties, and autonomy. Managers write letters to each other's Run, and each checks who a letter is from before acting on it.
 - **Routines.** Work at set times, written as a table in `profile.md` and run by Orca automations, so it survives closing the session.
+- **Secret cards.** A child that needs a token stored asks for a card on kantoku bot. You see the exact command, paste the value, and press Register; the value goes only to that command's standard input.
 - **PR watching.** CI results, reviews, comments, and merges on a child's PR reach that child within seconds, with a one-line summary to its manager.
 
 ## Requirements
@@ -145,7 +146,7 @@ node <plugin root>/bot/cli.ts [--port 4870] [--root <dir>]
 Then open `http://127.0.0.1:4870/`. It runs until Ctrl+C and needs nothing else (Node 22.18+, no npm install).
 
 - **This PC only.** It listens on `127.0.0.1`. A write needs the page's own per-start token, its exact origin, and JSON, so another website open in your browser cannot send in your name.
-- **What it writes.** Your words go to `~/.kantoku/<name>/bot/from-user.jsonl`. Then it rings the manager with `orca orchestration send` carrying only an id; the manager reads your words from that file, never from the letter. Edits to `profile.md` or `memory.md` first back up the file to `bot/backup/`, and are refused if the manager changed the file in the meantime. Nothing else under `~/.kantoku/` is written.
+- **What it writes.** Your words go to `~/.kantoku/<name>/bot/from-user.jsonl`. Then it rings the manager with `orca orchestration send` carrying only an id; the manager reads your words from that file, never from the letter. Edits to `profile.md` or `memory.md` first back up the file to `bot/backup/`, and are refused if the manager changed the file in the meantime. A secret card adds a `secret-done` or `secret-expired` line with the exit code only. Nothing else under `~/.kantoku/` is written.
 - **What it never shows.** Dispatch IDs, run IDs, worktree paths, the raw state tables, and the profile sections about repos, autonomy, accounts, and external input. Token-like strings are shown as `[hidden]`.
 
 Where each part of the page comes from:
@@ -160,6 +161,20 @@ Where each part of the page comes from:
 | Memory | `memory.md`, one fact per bullet |
 | Routines | the `Routines` table in `profile.md` |
 | Skills | `Extra skills` in every `profile.md` |
+| Secret cards | `bot/secret-requests.jsonl` (the manager writes it) |
+
+### Secret cards
+
+When a child needs a token stored, for example as a GitHub Actions secret, it does not ask you to paste the token into chat or pipe it from the clipboard. The manager puts a secret card on kantoku bot instead:
+
+1. The child asks for a card that names a recipe and its fields, such as `gh-secret-repo` with `VERCEL_TOKEN` and `example-org/web`. It never writes the value or a command.
+2. kantoku bot builds the command from its own fixed recipe table and shows it whole: `gh secret set VERCEL_TOKEN --repo example-org/web`.
+3. You paste the value into the password field and press Register. Only then does the command run.
+4. The value goes only to the command's standard input (`spawn` with no shell). It is not in the command's arguments or environment, not in any file or log, and not in the reply. The manager and the child get only the exit code.
+
+Recipes in this version: `gh-secret-repo`, `gh-secret-org`, and `gh-secret-env` (`gh secret set` for a repo, an organization, or an environment). A new recipe is a pull request here. Every field is checked against a strict pattern, so a name or repo with shell symbols or a leading `-` is refused, and the card says why.
+
+A card stays until it succeeds or its time runs out (30 minutes by default). If the command fails or you close the tab halfway, open the page again and paste again. A card whose request changed after you saw it is refused.
 
 ## Routines
 
