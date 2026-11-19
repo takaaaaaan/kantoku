@@ -4,6 +4,7 @@
 // pastes the value, and presses Register. The value then goes to the command's
 // stdin and nowhere else: not the argv, the env, a file, a log, or a reply.
 import { spawn as nodeSpawn } from 'node:child_process'
+import { redact } from './redact.ts'
 import type { Entry, TalkItem } from './types.ts'
 
 export type Command = { file: string; args: string[] }
@@ -96,33 +97,36 @@ export function parseSecretRequests(text: string, recipes: Record<string, Recipe
 
 export type SecretItem = Extract<TalkItem, { kind: 'secret' }>
 
+const MAX_TIME = 8.64e15
+const FUTURE_SLACK_MS = 5 * 60_000
+const isoOf = (ms: number) => (Math.abs(ms) <= MAX_TIME ? new Date(ms).toISOString() : '')
+
 export function secretItems(requests: SecretRequest[], log: Entry[], now: number): SecretItem[] {
   return requests.map(r => {
     const runs = log.filter(e => e.type === 'secret-done' && e.request === r.id)
     const done = runs.some(e => e.exit === 0)
     const expired = log.some(e => e.type === 'secret-expired' && e.request === r.id) || now >= r.expires
-    const state: SecretItem['state'] = r.command === undefined ? 'refused' : done ? 'done' : expired ? 'expired' : 'open'
+    // A time in the future would keep the card open past its ttl; one out of range cannot be shown.
+    const at = Date.parse(r.at)
+    const badTime = !(Math.abs(r.expires) <= MAX_TIME) || at > now + FUTURE_SLACK_MS
+    const reason = badTime ? 'the time is in the future or out of range' : r.reason
+    const state: SecretItem['state'] = r.command === undefined || badTime ? 'refused' : done ? 'done' : expired ? 'expired' : 'open'
     const item: SecretItem = {
       kind: 'secret',
-      at: new Date(Date.parse(r.at)).toISOString(),
+      at: isoOf(at),
       id: r.id,
       label: r.label,
       description: r.description,
       command: r.command === undefined ? '' : commandText(r.command),
-      expires: new Date(r.expires).toISOString(),
+      expires: isoOf(r.expires),
       state,
     }
     const last = runs.at(-1)
     if (last !== undefined) item.exit = done ? 0 : (last.exit ?? null)
-    if (r.reason !== undefined) item.reason = r.reason
+    if (reason !== undefined) item.reason = reason
 
     return item
   })
-}
-
-// An open request: not refused, not run to exit 0, not expired.
-export function isOpen(request: SecretRequest, log: Entry[], now: number): boolean {
-  return secretItems([request], log, now)[0]?.state === 'open'
 }
 
 // ---------- running ----------
@@ -183,13 +187,29 @@ export function runSecret(command: Command, value: string, opts: { spawn?: Spawn
   })
 }
 
-// The first non-empty stderr line for the user's card, unless it holds the value.
+// The first non-empty stderr line for the user's card, unless it holds any piece
+// of the value: any 4 characters in a row of a value line (or a whole shorter line).
 function firstLine(stderr: string, value: string): string | undefined {
   const line = stderr
     .split(/\r?\n/)
     .map(l => l.trim())
     .find(l => l !== '')
-  if (line === undefined || line.includes(value)) return undefined
+  if (line === undefined || holdsPiece(line, value)) return undefined
 
-  return [...line].slice(0, MAX_NOTE).join('')
+  return redact([...line].slice(0, MAX_NOTE).join(''))
+}
+
+const PIECE = 4
+
+function holdsPiece(line: string, value: string): boolean {
+  for (const part of value.split(/\r?\n/).map(p => p.trim())) {
+    if (part === '') continue
+    if (part.length <= PIECE) {
+      if (line.includes(part)) return true
+      continue
+    }
+    for (let at = 0; at + PIECE <= part.length; at++) if (line.includes(part.slice(at, at + PIECE))) return true
+  }
+
+  return false
 }

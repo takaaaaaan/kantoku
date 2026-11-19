@@ -258,8 +258,18 @@ function secretValue(body: Body): string {
   return value
 }
 
+async function readWhole(file: string): Promise<string> {
+  try {
+    return await readFile(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+    throw error
+  }
+}
+
 async function secretsOf(opts: BotServerOptions, home: string) {
-  const [requests, log] = await Promise.all([readSmall(join(home, SECRET_REQUESTS_FILE)), readSmall(join(home, LOG_FILE))])
+  // The log is read whole: a capped read of a big log would make a done card look open.
+  const [requests, log] = await Promise.all([readSmall(join(home, SECRET_REQUESTS_FILE)), readWhole(join(home, LOG_FILE))])
 
   return { requests: parseSecretRequests(requests, opts.recipes ?? RECIPES), log: parseLog(log) }
 }
@@ -331,13 +341,15 @@ const ROUTES: Record<string, Route> = {
 
     return ringFor(opts, home, id)
   },
-  '/api/secret': async ({ opts, body, now }) => {
+  '/api/secret': async ({ opts, body }) => {
     const home = await botHome(opts, body.bot)
     const value = secretValue(body)
 
     const done = await withLock(home, async () => {
       const { requests, log } = await secretsOf(opts, home)
       const request = requests.find(r => r.id === body.request)
+      // The time is read after the lock, so a Register that waited behind another run sees the expiry.
+      const now = (opts.now ?? (() => new Date()))()
       const card = request === undefined ? undefined : secretItems([request], log, now.getTime())[0]
       if (request?.command === undefined || card?.state !== 'open') throw new Refusal(409, 'this request is not open')
       // The command the user saw on the card is the command that runs.
