@@ -71,6 +71,9 @@ const autonomyOf = (view: ManagerView) =>
     ? '(no autonomy in profile.md)'
     : `writes: ${view.externalWrites ?? '?'} · merge: ${view.merge ?? '?'}`
 
+const routinesLineOf = (view: ManagerView) =>
+  `routines: ${view.routines.map(routine => `${routine.name} ${routine.when}`).join(' · ')}`
+
 const lineOf = (task: TaskItem) =>
   task.isDone ? `☑ ${task.title}` : `□ ${task.title}${task.status === '' ? '' : ` (${task.status})`}`
 
@@ -174,10 +177,10 @@ export const register: Register = (on, options) => {
       return <Text dimColor>This session is not a kantoku manager.</Text>
     }
 
-    // Rows for tasks: the pane's body less the name, job, autonomy, the gap
-    // and the "+N more" line.
+    // Rows for tasks: the pane's body less the name, job, autonomy, routines,
+    // the gap and the "+N more" line.
     const bodyRows = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 24
-    const room = Math.max(1, bodyRows - 5)
+    const room = Math.max(1, bodyRows - 5 - (view.routines.length > 0 ? 1 : 0))
     const shown = view.tasks.length > room ? view.tasks.slice(0, room) : view.tasks
     const hidden = view.tasks.length - shown.length
 
@@ -187,6 +190,7 @@ export const register: Register = (on, options) => {
         <Text bold>{titleOf(view)}</Text>
         <Text>{view.job === '' ? '(no duties in profile.md yet)' : view.job}</Text>
         <Text dimColor>{autonomyOf(view)}</Text>
+        {view.routines.length > 0 && <Text dimColor>{routinesLineOf(view)}</Text>}
         <Text> </Text>
         {view.tasks.length === 0 && <Text dimColor>No tasks in state.md.</Text>}
         {shown.map(task => (

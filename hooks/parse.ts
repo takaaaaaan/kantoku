@@ -2,10 +2,13 @@
 // The manager writes these files by hand, in Japanese or English, so every
 // reader here is lenient: a missing section is empty, never an error.
 
+export type Routine = { name: string; when: string }
+
 export type Profile = {
   job: string
   externalWrites: string | undefined
   merge: string | undefined
+  routines: Routine[]
 }
 
 export type TaskItem = {
@@ -21,6 +24,7 @@ const TASKS_HEADING = /^(タスク|tasks?\b)/i
 const QUEUE_HEADING = /^(待ち列|queue\b)/i
 const JOB_HEADING = /^(担当業務|duties\b|job\b)/i
 const AUTONOMY_HEADING = /^(自律度|autonomy\b)/i
+const ROUTINES_HEADING = /^(routines?\b|ルーティン)/i
 const STATUS_HEADER = /^(状態|状況|ステータス|status\b|state\b)/i
 // 完了待ち / 合格待ち ("waiting for done / pass") are still open.
 const DONE_STATUS = /^((完了|合格)(?!待ち)|merge ?済|merged\b|done\b|succeeded\b|completed?\b|pass(ed)?\b)/i
@@ -39,7 +43,29 @@ export function parseProfile(text: string): Profile {
     job: firstSentence(stripBullet((jobLine ?? '').trim())),
     externalWrites: settingOf(autonomy, /^(外への書き込み|external writes)$/i),
     merge: settingOf(autonomy, /^merge$/i),
+    routines: routinesOf(linesOf(sections, ROUTINES_HEADING)),
   }
+}
+
+// The Routines table, found by column name; its empty template row is skipped.
+function routinesOf(lines: string[]): Routine[] {
+  const header = headerOf(lines) ?? []
+  const column = (name: RegExp, fallback: number) => {
+    const at = header.findIndex(cell => name.test(cell))
+
+    return at < 0 ? fallback : at
+  }
+  const nameAt = column(/^(name|名前)/i, 0)
+  const whenAt = column(/^(when|cron|時刻|いつ)/i, 1)
+  const rule = lines.findIndex(isRuleLine)
+  if (rule < 1) return []
+
+  return lines
+    .slice(rule + 1)
+    .filter(isTableLine)
+    .map(cellsOf)
+    .map(cells => ({ name: plain(cells[nameAt] ?? ''), when: plain(cells[whenAt] ?? '') }))
+    .filter(routine => routine.name !== '')
 }
 
 export function parseState(text: string): TaskItem[] {

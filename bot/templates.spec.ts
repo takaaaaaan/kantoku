@@ -70,3 +70,25 @@ test('README explains how to start kantoku bot', () => {
   assert.match(readme, /## kantoku bot/)
   assert.ok(readme.includes('node <plugin root>/bot/cli.ts'))
 })
+
+test('a filled Routines row in the profile template shows in kantoku bot, and an old profile has none', () => {
+  const filled = read('skills/kantoku/templates/profile.md').replace(
+    /\| \| \| \| \| \|/,
+    "| standup | 50 8 * * 1-5 | Look at today's queue | manager | the queue is empty |",
+  )
+  assert.deepEqual(parseProfile(filled).routines, [{ name: 'standup', when: '50 8 * * 1-5', what: "Look at today's queue" }])
+  assert.deepEqual(parseProfile('## Duties\nMove web app X forward.\n').routines, [])
+})
+
+test('SKILL.md carries the routine rules', () => {
+  const skill = read('skills/kantoku/SKILL.md')
+  for (const words of [
+    'routines/cli.ts" sync <name>',
+    'kantoku:<name>:<routine>',
+    'kantoku-routine: <routine>',
+    'routines/inbox/',
+    'routines/handled.txt',
+    'A `report` result may quote outside text',
+  ])
+    assert.ok(skill.includes(words), words)
+})
