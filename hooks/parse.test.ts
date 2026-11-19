@@ -87,6 +87,11 @@ test('parseProfile skips comments and bullets (English template)', () => {
   })
 })
 
+test('parseProfile takes the job from Duties, not from Beliefs or Known managers above or below it', () => {
+  const text = '## Beliefs\nShip small.\n\n## Duties\nMove web app X forward.\n\n## Known managers\n| Name | What it does |\n|---|---|\n| watch | made me |\n'
+  expect(parseProfile(text).job).toBe('Move web app X forward.')
+})
+
 test('parseProfile of an unfilled template leaves fields empty', () => {
   expect(parseProfile('## Duties\n<!-- fill me -->\n\n## Autonomy\n')).toEqual({
     job: '',
