@@ -1,5 +1,6 @@
 // Readers for reports.md (the manager), memory.md (the manager),
 // bot/from-user.jsonl (kantoku bot) and bot/handled.txt (the manager).
+// bot/secret-requests.jsonl (the manager) is read in secret.ts.
 import { createHash } from 'node:crypto'
 import { sectionsOf, stripComments } from './sections.ts'
 import type { Choice, Entry, TalkItem } from './types.ts'
@@ -78,7 +79,7 @@ export function memoryIdOf(line: string): string {
   return hashOf(line.trim()).slice(0, 8)
 }
 
-const TYPES = new Set(['say', 'answer', 'edited', 'delivered'])
+const TYPES = new Set(['say', 'answer', 'edited', 'delivered', 'secret-done', 'secret-expired'])
 
 export function parseLog(text: string): Entry[] {
   const entries: Entry[] = []
@@ -98,6 +99,8 @@ export function parseLog(text: string): Entry[] {
     if (typeof raw.ask === 'string') entry.ask = raw.ask
     if (typeof raw.what === 'string') entry.what = raw.what
     if (raw.delivery === 'sent' || raw.delivery === 'queued') entry.delivery = raw.delivery
+    if (typeof raw.request === 'string') entry.request = raw.request
+    if (raw.exit === null || (typeof raw.exit === 'number' && Number.isInteger(raw.exit))) entry.exit = raw.exit
     entries.push(entry)
   }
 

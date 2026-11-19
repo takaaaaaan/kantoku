@@ -4,6 +4,7 @@ import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { Recipe } from './secret.ts'
 
 export const FIXTURE_HOME = fileURLToPath(new URL('./fixtures/home', import.meta.url))
 
@@ -17,4 +18,11 @@ export function makeHome(): string {
   writeFileSync(join(root, 'Pico', 'memory.md'), '- big\n'.repeat(400_000))
 
   return root
+}
+
+// A harmless recipe for real runs: node writes how many bytes it got, its argv
+// and whether its env holds the value, to a file. It never writes the value.
+export function countRecipe(out: string): Recipe {
+  const script = `const fs=require('fs');let n=0;const parts=[];process.stdin.on('data',c=>{n+=c.length;parts.push(c)}).on('end',()=>{const got=Buffer.concat(parts).toString('utf8');fs.writeFileSync(process.argv[1],JSON.stringify({bytes:n,argv:process.argv.slice(2),envHasValue:Object.values(process.env).some(v=>v&&v===got)}));process.exit(Number(process.argv[2]))})`
+  return { file: process.execPath, fields: { exit: /^[0-9]$/ }, args: f => ['-e', script, out, f.exit ?? '0'] }
 }

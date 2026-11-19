@@ -1,6 +1,6 @@
 // kantoku bot's HTTP server. Listens on 127.0.0.1 only, serves the page and the
 // manager list JSON, and guards every request with a Host check (DNS rebinding).
-import { BACKUP_DIR, LOG_FILE } from './paths.ts'
+import { BACKUP_DIR, LOG_FILE, SECRET_REQUESTS_FILE } from './paths.ts'
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -10,6 +10,8 @@ import { join } from 'node:path'
 import { orcaRing } from './doorbell.ts'
 import type { Ring } from './doorbell.ts'
 import { BOT_NAME, botNames, buildBots, readSmall } from './read.ts'
+import { RECIPES, commandText, parseSecretRequests, runSecret, secretItems } from './secret.ts'
+import type { Recipe } from './secret.ts'
 import { parseLog, parseMemory, parseReports } from './notes.ts'
 import { parseProfile } from './profile.ts'
 import { redact } from './redact.ts'
@@ -24,10 +26,13 @@ export type BotServerOptions = {
   token: string
   ring?: Ring
   now?: () => Date
+  // The secret recipe table. Tests pass a harmless one; the bot always uses RECIPES.
+  recipes?: Record<string, Recipe>
 }
 
 export const MAX_BODY = 16 * 1024
 export const MAX_SAY = 4000
+export const MAX_SECRET = 8192
 
 // A request kantoku bot refuses, with the status and a short reason for the page.
 export class Refusal extends Error {
@@ -244,6 +249,45 @@ async function edit(opts: BotServerOptions, home: string, now: Date, file: strin
   return { ...(await ringFor(opts, home, saved.id)), version: saved.version }
 }
 
+// The value is checked before anything is read, and never appears in a refusal.
+function secretValue(body: Body): string {
+  const value = body.value
+  if (typeof value !== 'string' || value === '') throw new Refusal(400, 'value is missing')
+  if (value.length > MAX_SECRET) throw new Refusal(400, 'value is too long')
+
+  return value
+}
+
+async function secretsOf(opts: BotServerOptions, home: string) {
+  const [requests, log] = await Promise.all([readSmall(join(home, SECRET_REQUESTS_FILE)), readSmall(join(home, LOG_FILE))])
+
+  return { requests: parseSecretRequests(requests, opts.recipes ?? RECIPES), log: parseLog(log) }
+}
+
+// Writes secret-expired for each open request past its time, and rings. Run on
+// the bot's retry timer. Returns how many it wrote.
+export async function expireSecrets(root: string, ring: Ring, now: () => Date = () => new Date(), recipes: Record<string, Recipe> = RECIPES): Promise<number> {
+  let count = 0
+  for (const name of await botNames(root)) {
+    const home = join(root, name)
+    const opts = { root, port: 0, pageDir: '', token: '', ring, now, recipes }
+    const written = await withLock(home, async () => {
+      const { requests, log } = await secretsOf(opts, home)
+      const at = now()
+      const ids: string[] = []
+      for (const card of secretItems(requests, log, at.getTime())) {
+        if (card.state !== 'expired' || log.some(e => e.type === 'secret-expired' && e.request === card.id)) continue
+        ids.push(await record(home, { id: newId(at), at: localIso(at), type: 'secret-expired', request: card.id }))
+      }
+      return ids
+    })
+    for (const id of written) await ringFor(opts, home, id)
+    count += written.length
+  }
+
+  return count
+}
+
 const memoryFact = async (home: string, id: unknown) =>
   parseMemory(await readSmall(join(home, 'memory.md'))).find(m => m.id === id)?.fact ?? ''
 
@@ -287,6 +331,26 @@ const ROUTES: Record<string, Route> = {
 
     return ringFor(opts, home, id)
   },
+  '/api/secret': async ({ opts, body, now }) => {
+    const home = await botHome(opts, body.bot)
+    const value = secretValue(body)
+
+    const done = await withLock(home, async () => {
+      const { requests, log } = await secretsOf(opts, home)
+      const request = requests.find(r => r.id === body.request)
+      const card = request === undefined ? undefined : secretItems([request], log, now.getTime())[0]
+      if (request?.command === undefined || card?.state !== 'open') throw new Refusal(409, 'this request is not open')
+      // The command the user saw on the card is the command that runs.
+      if (body.command !== commandText(request.command)) throw new Refusal(409, 'changed')
+      const result = await runSecret(request.command, value)
+      const at = (opts.now ?? (() => new Date()))()
+      const id = await record(home, { id: newId(at), at: localIso(at), type: 'secret-done', request: request.id, exit: result.exit })
+
+      return { id, result }
+    })
+
+    return { ...(await ringFor(opts, home, done.id)), ...done.result }
+  },
   '/api/say': async ({ opts, body, now }) => {
     const home = await botHome(opts, body.bot)
     const text = textField(body, 'text', MAX_SAY)
@@ -309,7 +373,7 @@ async function handle(server: Server, opts: BotServerOptions, req: IncomingMessa
 
   if (path === '/api/bots' || page) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'method' })
-    if (path === '/api/bots') return sendJson(res, 200, await buildBots(opts.root))
+    if (path === '/api/bots') return sendJson(res, 200, await buildBots(opts.root, (opts.now ?? (() => new Date()))(), opts.recipes ?? RECIPES))
     if (page) {
       const text = await readFile(join(opts.pageDir, page.file), 'utf8')
       return send(res, 200, page.type, page.file === 'index.html' ? text.replace(TOKEN_PLACEHOLDER, opts.token) : text)
