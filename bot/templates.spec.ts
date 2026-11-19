@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs'
 import { parseReports } from './notes.ts'
 import { parseState } from './state.ts'
 import { parseProfile } from './profile.ts'
-import { parseProfile as panelProfile } from '../hooks/parse.ts'
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 
@@ -26,13 +25,13 @@ test('the state template with a PR column is read by name', () => {
   assert.deepEqual([state.status, state.waitingRows], ['waiting', 1])
 })
 
-test('the profile template has Beliefs and Known managers, and both readers still take Duties', () => {
+// The panel's side of this is in hooks/parse.test.ts (bot/ does not import hooks/).
+test('the profile template has Beliefs and Known managers, and kantoku bot still takes Duties', () => {
   const filled = read('skills/kantoku/templates/profile.md')
     .replace(/## Beliefs\r?\n/, '## Beliefs\nShip small.\n')
     .replace(/## Duties\r?\n/, '## Duties\nMove web app X forward.\n')
   assert.match(filled, /^## Known managers/m)
   assert.equal(parseProfile(filled).description, 'Move web app X forward.')
-  assert.equal(panelProfile(filled).job, 'Move web app X forward.')
 })
 
 test('SKILL.md carries the kantoku bot rules', () => {

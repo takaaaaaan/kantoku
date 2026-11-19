@@ -367,7 +367,7 @@ The manager that proposes it makes it.
    ```
    Never use `worker-start` for a manager. A worker shares your Run, cannot send to other Runs, and becomes your child.
 3. On its first start, Claude Code asks whether to trust the folder. Only the user answers that. After it, the new manager runs "0. Startup" on its own: it creates its Run, writes `terminal:` and `run:` to its `state.md`, and writes you `<new>: ready`.
-4. Tell the user in one line: "Made manager <new> for <duties>. Open `<new> (…)` in the sidebar and trust the folder; I go on when it is ready." Then end your turn. Do not ask the user to tell you when it is done: the `ready` letter wakes you.
+4. Tell the user in one line: "Made manager <new> for <duties>. Open `<new> (…)` in the sidebar and trust the folder; I go on when it is ready." Then end your turn. Do not ask the user to tell you when it is done: the `ready` letter wakes you. Check its `from` like any letter ("Receiving a letter").
 
 After that, write only to your own `<home>`. Change another manager's profile only by letter, or by asking the user.
 
