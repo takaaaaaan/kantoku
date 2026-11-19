@@ -44,6 +44,7 @@ kantoku is that attempt.
 | [Orca](https://github.com/stablyai/orca) (start the manager inside an Orca terminal) | [superpowers](https://github.com/obra/superpowers) (`brainstorming`, `writing-plans`, TDD) |
 | `gh` (GitHub CLI) | `agent-desktop`, `jev-desktop`, `claude-in-chrome` (screen control) |
 | | Codex CLI (to run the verifier on a different model) |
+| | Node 22.18+ (kantoku bot) |
 | | Node 22.18+ and the `gh` extension [`cli/gh-webhook`](https://github.com/cli/gh-webhook), with the `admin:repo_hook` (or `repo`) token scope (PR watching) |
 
 ## Install
@@ -119,6 +120,44 @@ node watch/cli.ts stop                             stop it and its forwarders
 - **Cleanup on stop.** GitHub drops the temporary webhook when the forwarder stops. `stop` exits 1 if the daemon did not end, and lists any forwarder hook it still finds; deleting one is left to you.
 - One daemon serves every manager on the machine. Its files live in `~/.kantoku-watch/`.
 - **Limits.** A PR reopened after kantoku-watch saw it close is not watched again. Approve and request-changes reviews cannot be tested on your own PR (GitHub does not allow them), so they were checked by unit tests only.
+
+## kantoku bot
+
+The panel shows one manager beside its own chat. kantoku bot is one local page for all of them, like a bot list: pick a manager, read what it told you, talk to it, answer its questions with a button, and fix its description or memory.
+
+```
+┌ kantoku bot ──────────┬───────────────────────────────────────┐
+│ (•‿•) Mochi    [待ち]  │ (•‿•) Mochi ▸   waiting for you        │
+│ (•_•) Pico             │ (•‿•) [The search sort is done …]      │
+│ (-_-) Sora             │                [Default to newest] (you)│
+│                        │ (•‿•) [Where should we test?]          │
+│                        │       (Locally ★) (Staging) (Write own)│
+│                        │ [ Talk to Mochi…                ] (Send)│
+└────────────────────────┴───────────────────────────────────────┘
+```
+
+```
+node <plugin root>/bot/cli.ts [--port 4870] [--root <dir>]
+```
+
+Then open `http://127.0.0.1:4870/`. It runs until Ctrl+C and needs nothing else (Node 22.18+, no npm install).
+
+- **This PC only.** It listens on `127.0.0.1`. A write needs the page's own per-start token, its exact origin, and JSON, so another website open in your browser cannot send in your name.
+- **What it writes.** Your words go to `~/.kantoku/<name>/bot/from-user.jsonl`. Then it rings the manager with `orca orchestration send` carrying only an id; the manager reads your words from that file, never from the letter. Edits to `profile.md` or `memory.md` first back up the file to `bot/backup/`, and are refused if the manager changed the file in the meantime. Nothing else under `~/.kantoku/` is written.
+- **What it never shows.** Dispatch IDs, run IDs, worktree paths, the raw state tables, and the profile sections about repos, autonomy, accounts, and external input. Token-like strings are shown as `[hidden]`.
+
+Where each part of the page comes from:
+
+| On the page | From |
+|---|---|
+| The list, faces, names | the folders under `~/.kantoku/` |
+| Working / waiting for you / asleep | `state.md`: open tasks; a Pending gate that starts with `user:`, or an unanswered question |
+| The manager's messages and questions | `reports.md` (the manager writes it) |
+| Your messages and their delivery | `bot/from-user.jsonl`; "read" once the id is in `bot/handled.txt` |
+| Description and won't do | `profile.md` (`Description`, else `Duties`; `Won't do`) |
+| Memory | `memory.md`, one fact per bullet |
+| Routines | the `Routines` table in `profile.md` |
+| Skills | `Extra skills` in every `profile.md` |
 
 ## Tips
 

@@ -6,7 +6,8 @@
 
 ## Tasks
 <!-- One row per task. Status starts with a short word: "in progress", "waiting for verifier", "done", "merged".
-     PR: the URL of the PR this child owns, once it exists. Only the owner's row has it (a verifier's row does not). kantoku-watch sends this PR's events to the row's dispatch ID. -->
+     PR: the URL of the PR this child owns, once it exists. Only the owner's row has it (a verifier's row does not). kantoku-watch sends this PR's events to the row's dispatch ID.
+     Pending gate: what the row waits for. When it waits on the user, start it with `user:` and a few words (example: `user: where to test`); kantoku bot shows that row as "waiting for you". Clear it to `-` once the user answers. -->
 | Task | Child worktree | dispatch ID | PR | Status | Pending gate |
 |---|---|---|---|---|---|
 

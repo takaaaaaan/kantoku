@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="bot-token" content="__BOT_TOKEN__">
+<title>kantoku bot</title>
+<link rel="stylesheet" href="/bot.css">
+<script type="module" src="/bot.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">kantoku bot</div>
+    <ul class="bots" id="bots"></ul>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+
+  <main class="main">
+    <header class="head">
+      <button class="head-name" id="headName" type="button" aria-haspopup="dialog"></button>
+      <span class="state" id="headState"></span>
+    </header>
+    <section class="chat" id="chat" aria-live="polite"></section>
+    <form class="composer" id="composer" hidden>
+      <label for="say" class="visually-hidden" id="sayLabel"></label>
+      <textarea id="say" rows="1" maxlength="4000"></textarea>
+      <button class="send" id="sendBtn" type="submit" disabled></button>
+    </form>
+    <div class="hint" id="hint" hidden></div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetName" aria-hidden="true">
+  <div class="sheet-top">
+    <button class="icon-btn gear" id="gear" type="button" hidden>⚙</button>
+    <button class="icon-btn close" id="close" type="button">✕</button>
+    <span id="sheetFace"></span>
+    <h2 id="sheetName"></h2>
+    <span class="state" id="sheetState"></span>
+  </div>
+  <div class="sheet-body">
+    <div class="sec" id="descSec"></div>
+    <div class="sec"><h3 id="memoryTitle"></h3><ul id="memory"></ul></div>
+    <div class="sec"><h3 id="routinesTitle"></h3><ul id="routines"></ul></div>
+    <div class="sec"><h3><span><span id="skillsTitle"></span> <span class="shared" id="skillsShared"></span></span></h3><div id="skills"></div></div>
+  </div>
+</aside>
+</body>
+</html>
