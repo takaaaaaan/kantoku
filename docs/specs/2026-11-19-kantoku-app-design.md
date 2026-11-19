@@ -1,7 +1,10 @@
 # kantoku app design: desktop window and phone
 
 Status: design. Nothing is implemented yet.
-Mockup: [`docs/mockups/kantoku-bot-mobile.html`](../mockups/kantoku-bot-mobile.html) (open it in a browser; all data is made up and nothing is sent).
+Mockups (open in a browser; all data is made up and nothing is sent):
+- Desktop app: [`docs/mockups/kantoku-app-desktop.html`](../mockups/kantoku-app-desktop.html)
+- Phone: [`docs/mockups/kantoku-bot-mobile.html`](../mockups/kantoku-bot-mobile.html)
+
 Builds on: [kantoku bot design](2026-11-19-kantoku-bot-design.md) and the secret card (issue #10), which this design assumes has landed.
 
 ## Why
@@ -11,13 +14,23 @@ kantoku's aim is a Grok Bot-like agent on top of Orca. Grok Bot is an app: it ha
 1. **An app on the PC.** Its own window, no browser tab to keep open, and an OS notification when a manager waits for the user. Today a question sits unseen until the user happens to look.
 2. **The phone.** Away from the PC, the user cannot answer a manager's question or say something to it. A manager that needs one word from the user stops for hours.
 
+The user decides whether to keep using an app from its first look, so the first impression gets as much weight as the function.
+
+## What the user decided (fixed)
+
+- **Desktop first, then the phone.**
+- **Modern, with motion, and still cute.** Round faces and soft words stay. Screens slide, cards fold away, panels grow and shrink. All motion stops under `prefers-reduced-motion`. The mockups were rebuilt from references the designer collected (see "Look and motion").
+- **No PIN on the phone.** A paired phone writes as the user with nothing more. The user chose this after seeing the review's proof of what it allows. See "The risk the user accepted" and "Removing a phone".
+- **Secret cards work on the phone.** With the clipboard risk written down and a record of every phone registration shown on the PC.
+- PIN on every write and passkeys stay as options for a later stage, chosen in a setting.
+
 ## Goals
 
-1. kantoku bot installs as an app on Windows and macOS: its own window, its own icon in the taskbar or Dock, a badge with the count of questions waiting.
-2. An OS notification fires for exactly two events, the same two Grok Bot has: **a manager waits for you** (a new question) and **a manager finished something** (a new report). Pressing it opens that manager's conversation.
+1. kantoku bot installs as an app on Windows and macOS: its own window, its own icon in the taskbar or Dock, a badge with the count of things waiting for the user.
+2. An OS notification fires for exactly two events, the same two Grok Bot has: **a manager waits for you** (a new question or secret card) and **a manager finished something** (a new report). Pressing it opens that manager's conversation.
 3. Notifications arrive while the app window is closed, as long as the PC and kantoku bot are running.
-4. From a phone (iOS and Android), outside the home network, the user can see every manager, read the conversation, answer a question, and say something. Notifications reach the phone too.
-5. The phone layout keeps today's look: round pastel faces, soft copy, bubbles, the orange "waiting for you" mark.
+4. From a phone (iOS and Android), outside the home network, the user can see every manager, read the conversation, answer a question, say something, and register a secret. Notifications reach the phone too.
+5. The first look is modern and moves, and keeps the cute faces and soft copy.
 6. The page stays unreachable from the public internet.
 
 ## Non-goals (this design)
@@ -25,17 +38,18 @@ kantoku's aim is a Grok Bot-like agent on top of Orca. Grok Bot is an app: it ha
 - A tray icon. Grok Bot has one. A PWA cannot draw one; see "Later" for the optional shell.
 - Store apps (App Store, Play Store) and code signing.
 - Editing the description or memory from the phone. The phone shows them; the PC edits them.
-- Entering a secret value on the phone (see "Secret cards on the phone").
 - Offline use. With the PC off, the phone shows "the PC is not reachable" and nothing else.
 - More notification kinds than the two above.
 
 ## Anti-goals (a failure even if it works)
 
-- Anyone other than the user can make a manager act on words it treats as the user's. That includes another device in the user's tailnet, a person the device is shared with, a public visitor through Tailscale Funnel, and someone holding the user's unlocked phone.
+- Anyone without a paired phone or the PC can make a manager act on words it treats as the user's. That includes another device in the user's tailnet, a page served by another tailnet machine, a person the device is shared with, and a public visitor through Tailscale Funnel.
 - The server listens on anything other than loopback.
-- A secret value is typed on the phone or crosses the network to reach a secret card.
+- A secret registered from the phone leaves no record the user sees on the PC.
+- A secret value is stored anywhere: a file, a log, the page's storage, a notification.
 - A phone write can do something the PC page cannot do, or skips a check the PC page has.
-- A notification carries a token, a path, or a run id.
+- A notification carries text from the files, a token, a path, or a run id.
+- Motion that cannot be turned off, or that hides what changed.
 - The design needs the user to open a port on the router.
 
 ## Constraints
@@ -43,6 +57,7 @@ kantoku's aim is a Grok Bot-like agent on top of Orca. Grok Bot is an app: it ha
 - Same as kantoku bot: Node 22.18+ with TypeScript type stripping, no npm dependencies, `node:test`, public repo with no personal data.
 - The manager is an LLM session that proves "this came from the user" by reading a file. Nothing in this design changes that rule; the phone writes the same `from-user.jsonl` entries.
 - kantoku ships as a Claude Code plugin. Anything that needs a compiled binary, an app store, or a signing account does not fit that channel.
+- The page loads nothing from outside: no web fonts, no animation library. Motion is CSS transitions, keyframes, and the View Transitions API where the browser has it.
 
 ## Approaches considered
 
@@ -50,7 +65,7 @@ kantoku's aim is a Grok Bot-like agent on top of Orca. Grok Bot is an app: it ha
 |---|---|---|---|---|---|---|---|
 | **(a) PWA**: kantoku bot's page gains a manifest and a service worker and installs as an app | Yes (Chrome, Edge) | Yes (Chrome, Edge; Safari "Add to Dock") | Yes, from Safari "Add to Home Screen"; Web Push needs iOS 16.4+ and the installed app | Yes (Chrome) | Small: 4 new files and one server module | Yes, plain files in `bot/page/` | Window, icon, badge, both notifications. No tray |
 | **(b) Electron or Tauri shell** around the same page | Yes | Yes | No | No | Medium to large: a second build system (Electron adds a 100 MB+ runtime and npm dependencies; Tauri needs a Rust toolchain), installers, an updater | Poorly: unsigned builds trip SmartScreen and Gatekeeper; signing costs money and an account | Tray, autostart, notifications. No phone |
-| **(c) Tailscale Serve** in front of a second loopback listener, so the phone reaches the PC | n/a | n/a | Yes (Tailscale app) | Yes (Tailscale app) | Medium: the listener, pairing, PIN | Yes, code in `bot/`. The user installs Tailscale | It is the road, not the app. Combined with (a), the phone gets the same installable app |
+| **(c) Tailscale Serve** in front of a second loopback listener, so the phone reaches the PC | n/a | n/a | Yes (Tailscale app) | Yes (Tailscale app) | Medium: the listener, pairing | Yes, code in `bot/`. The user installs Tailscale | It is the road, not the app. Combined with (a), the phone gets the same installable app |
 
 **Chosen: (a) for both, with (c) as the road for the phone.** Reasons:
 
@@ -64,14 +79,48 @@ Rejected outright: binding to the LAN address (no HTTPS on a bare IP, so no serv
 
 ## Order
 
-**Desktop first, then the phone.** The desktop stages add no new way in: the server still answers only the local page. They build the notice engine, the manifest, the service worker, and Web Push, which the phone then reuses. The phone stage is the one that changes who can reach kantoku bot, so it comes last, on a base that already works, and it gets the most review.
+**Desktop first, then the phone** (the user's choice, and the designer's). The desktop stages add no new way in: the server still answers only the local page. They build the new look, the notice engine, the manifest, the service worker, and Web Push, which the phone then reuses. The phone stage is the one that changes who can reach kantoku bot, so it comes last, on a base that already works, and it gets the most review.
 
 | Stage | Ships | New way in? |
 |---|---|---|
-| 1. Desktop app | Manifest, icons, service worker, notices engine, notifications while the window is open, badge, login item | No |
+| 1. Desktop app | New look and motion, manifest, icons, service worker, notices engine, notifications while the window is open, badge, login item | No |
 | 2. Desktop push | Web Push, so notifications arrive with the window closed | No (outbound only) |
-| 3. Phone | Remote listener behind Tailscale Serve, owner check, device pairing, PIN on every write, phone layout, phone push | **Yes** |
-| Later (not planned) | Passkey unlock in place of the PIN; an optional tray shell | — |
+| 3. Phone | Remote listener behind Tailscale Serve, owner check, request check, device pairing, phone layout, secret cards with a PC record, phone push | **Yes** |
+| 4. Phone lock options | A setting to require a PIN on every phone write, or a passkey (Face ID, fingerprint) | No (narrows it) |
+| Later (not planned) | An optional tray shell | — |
+
+## Look and motion
+
+The user asked for a modern look with motion, collected from sites such as motionsites.ai. The designer looked through its Sites and Dashboards sections in Orca's built-in browser (no sign-in) and took these:
+
+| Reference (motionsites.ai) | What it shows | What kantoku bot takes |
+|---|---|---|
+| Iris Assistant (AI Assistant) | A glowing orb that breathes in the middle of a dark page | The face's aura: a soft halo that breathes while a bot waits for you, and a turning ring while it works |
+| DeepThink (AI Assistant) | Chat bubbles that rise in one after another over a soft gradient, a rounded input bar | Bubbles rise and un-blur in sequence; the input is a floating glass pill |
+| Smart Home (Dashboard) | Frosted glass cards over a soft photo, rounded pill tabs | Frosted glass panels over slow color blobs; everything rounded |
+| Glassmorphic Feature Tabs (Tabs) | A highlight that slides between tabs | The `すべて / あなた待ち / 作業中` filter with a sliding thumb |
+| Dashboard UI (Dashboard) | White rounded tiles with soft shadows that lift on hover | List rows lift on hover and press in on tap; cards come in with a short stagger |
+| Apex Program Accordion (Accordion) | Rows that open and close with height motion | Info sections fold open and closed; a question card folds its choices away once answered |
+
+The look in words (see both mockups):
+
+- **Background.** A pale gradient with three blurred color blobs that drift slowly. Panels are frosted glass (`backdrop-filter`) with a thin light border.
+- **Faces.** The same round pastel faces, with a shine, blush, and eye highlights. Waiting: the face breathes and a halo pulses. Working: a ring turns around it. Asleep: colors soften and a small "z" floats.
+- **Accent.** An orange-to-pink gradient for "waiting for you", the recommended choice, and the send button. Purple for secret cards. Green for working and "connected".
+- **Motion list.**
+  1. The window rises in on start.
+  2. List rows rise in with a 60 to 70 ms stagger; they lift on hover and press in on tap.
+  3. The filter thumb slides with a spring.
+  4. Switching bots uses a View Transition (a cross-fade) where the browser has it.
+  5. On the phone, the conversation slides in from the right and the list slides back and fades.
+  6. Bubbles rise in, scale up, and un-blur in sequence.
+  7. A question card's choices fold away after an answer, and a "✓ 答えた" chip pops in. A secret card folds the same way after Register.
+  8. The info panel grows out to the right on the PC; on the phone it springs up from the bottom as a sheet.
+  9. Info sections fold open and closed (grid rows `1fr` to `0fr`, no height measuring).
+  10. The waiting count pops when it changes. The send button gives a small twist when it sends.
+  11. Notifications slide in (PC preview) or drop in (phone lock screen).
+- **Motion off.** Under `prefers-reduced-motion: reduce`, every animation and transition stops and View Transitions are skipped; every state still shows, it just does not move. The mockups also have a "動きを止める" button to check this.
+- **Speed.** Most moves take 0.3 to 0.55 s. Springs overshoot a little (`cubic-bezier(.34, 1.56, .64, 1)`); fades and slides ease out. Nothing loops except the face states, the connection dot, and the background blobs, which move slowly.
 
 ## The desktop app (stages 1 and 2)
 
@@ -140,6 +189,8 @@ Push messages go out through the browser vendor's push service (Google, Mozilla,
 
 ## The phone (stage 3)
 
+> **Read this first. A paired phone is you.** With no PIN (the user's choice), anyone holding your unlocked, paired phone can answer a manager's question as you, approve a deploy, send words in your name, and register a secret value of their choosing into your CI. If a paired phone is lost, stolen, or handed to someone, remove it right away (see "Removing a phone").
+
 ### The road
 
 ```
@@ -159,86 +210,111 @@ Every request to the remote listener passes these checks, in order. Any failure 
 
 1. **Host** is exactly the configured `--remote-host`.
 2. **Owner.** The `Tailscale-User-Login` header equals `--owner`. Serve sets this header for requests from the user's tailnet devices and removes any copy the client sent. Funnel requests, tagged devices, and requests with no header carry no identity and are refused. A person the device is shared with has a different login and is refused. This makes "turned on Funnel by mistake" fail closed.
-3. **Every POST, with no exception,** needs `Origin` exactly `https://<remote-host>`, `Content-Type: application/json`, and the header `X-Kantoku-Bot: 1`. This runs before any route, so it covers `POST /api/pair` and every write that carries a PIN, before a try is counted. No CORS headers, as today.
+3. **Every POST, with no exception,** needs `Origin` exactly `https://<remote-host>`, `Content-Type: application/json`, and the header `X-Kantoku-Bot: 1`. This runs before any route, so it covers `POST /api/pair` before a try is counted. No CORS headers, as today.
 4. **Paired device.** A `__Host-kb_device` cookie (Secure, HttpOnly, SameSite=Strict, Path=/) whose SHA-256 is in `~/.kantoku/.bot/devices.json`. Without it the only routes are the pairing page and `POST /api/pair`.
-5. **PIN, for anything that writes** (below).
 
 Why check 3 is needed even with the owner check and a SameSite cookie:
 
 - The owner check passes for any page open on the owner's own devices. Tailscale adds the owner's login to every request from the device, whichever site sent it.
 - `ts.net` is on the Public Suffix List, so every machine in one tailnet counts as one site. A page served by another machine in the tailnet is "same site", and the browser sends the SameSite=Strict cookie with its form posts.
-- The review proved both: without check 3, a form on another site burned the pairing code, and a form on another tailnet machine sent five wrong PINs and removed the user's phone.
+- The review proved both: without check 3, a form on another site burned the pairing code, and a form on another tailnet machine posted with the user's device cookie. With no PIN, such a post would be a message in the user's name, so check 3 is the line that keeps other pages out.
 - A cross-origin page cannot send `X-Kantoku-Bot` or `application/json` without a CORS preflight, and the listener never answers one. The exact `Origin` closes what is left.
 
 The per-start token of the local page is never served on the remote listener.
 
 ### Pairing a phone
 
-1. On the PC page (local only), the info area gets "電話をつなぐ / Pair a phone". Pressing it shows a 6-digit code and asks for a device name ("my phone").
+1. On the PC page (local only), "📱 つないだ電話" in the title bar opens the info panel at "つないだ電話". "電話をつなぐ" shows a 6-digit code and asks for a device name ("my phone").
 2. The code is good for 10 minutes and for 5 tries in total. A wrong fifth try burns it. Only requests that pass checks 1 to 3 count as tries.
-3. On the phone, the user opens the ts.net address (inside Tailscale), types the code, and sets a 4 to 8 digit PIN.
-4. The server stores `{ id, name, cookieHash, pinHash (scrypt), pinSalt, created, lastSeen, misses }` and sets the device cookie. The cookie lasts 30 days from last use.
-5. The PC page lists paired devices with name, last seen, and "外す / Remove". Removing deletes the entry, so its cookie stops working on the next request.
+3. On the phone, the user opens the ts.net address (inside Tailscale) and types the code. The pairing screen says, before the button, that a paired phone can answer, talk, and register secrets as the user, and how to remove it.
+4. The server stores `{ id, name, cookieHash, created, lastSeen, lastSecret }` and sets the device cookie. The cookie lasts 30 days from last use.
 
-### PIN on every write
+### The risk the user accepted
 
-Reading needs the paired device. **Every write carries the PIN**: each send, each answer, each "ask to stop".
+Writing from a paired phone needs nothing beyond the phone itself. That means:
 
-- The page asks for the PIN in a small sheet when the user presses send or a choice, and sends it in the same request. The page never stores it.
-- The PIN is checked on the PC (scrypt hash). Five wrong PINs in a row remove the device; it must pair again from the PC. The PIN sheet says how many tries are left.
-- An earlier draft unlocked writes for 15 minutes after one PIN. The review proved the hole: someone who picks up the phone three minutes after the user's last answer could send "deploy: yes" with no PIN. A PIN on every write has no such window and no unlock state to keep, so it is also less code.
-- It covers the case the anti-goals name: an unlocked phone in someone else's hand can read, but cannot answer "deploy?" or send words in the user's name.
-- Passkeys (Face ID, fingerprint) would make each write one touch. They need WebAuthn verification (CBOR, COSE keys) with no dependencies, so they are left to "Later". The PIN is a few lines with `node:crypto` `scrypt`.
+- Someone with the phone, unlocked, can answer any question card as the user, including the "always ask" kind: a deploy, a merge, deleting data.
+- They can send any message in the user's name. The manager treats it as the user's own words.
+- They can register a secret value of their choosing through an open secret card, for example a CI token that leaks the build to them.
+- The phone's own lock (passcode, Face ID, fingerprint) is the only barrier. A phone left unlocked on a desk, or handed to a child, is the user.
+
+The review proved this with a run (finding 9 below): three minutes after the user's last answer, another person sent "deploy: yes" from the open app. Stage 4 adds the setting that closes it (a PIN on every write, or a passkey) for users who want it.
+
+What still holds without a PIN: nobody can write without a paired phone; nothing from the internet, another tailnet machine, or another site gets in (checks 1 to 3); a phone can never pair another phone; and every phone action is labeled with the device name on the PC.
+
+### Removing a phone
+
+Do this as soon as a paired phone is lost, stolen, sold, or out of your hands. Any one step stops the phone; do the first one you can reach.
+
+1. **Away from the PC: remove the phone from your tailnet.** Open the Tailscale admin console in any browser (`login.tailscale.com/admin/machines`), find the phone, and choose "Remove". The phone can no longer reach the PC at all. This works from anywhere and is the fastest.
+2. **At the PC: remove it in kantoku bot.** Title bar "📱 つないだ電話" → the phone's row → "外す". Its cookie stops working on the next request. Pairing it again needs a new code from the PC.
+3. **From a terminal on the PC:** `node bot/cli.ts --remove-phones` removes every paired phone. `--remote` off (restart without it) closes the phone road entirely.
+
+Then look at the record: every phone action in the last days shows on the PC with the device name (below). Tell the affected managers about any answer or secret you did not make.
 
 ### What the phone can do
 
 | Action | Phone | Why |
 |---|---|---|
 | See managers, status, conversation, info sheet | Yes | Read only, same redaction as the PC |
-| Say something | Yes, with the PIN | The point of the phone |
-| Answer a question card | Yes, with the PIN | The point of the phone |
-| Ask to stop a routine | Yes, with the PIN | It is a `say` with fixed text |
+| Say something | Yes | The point of the phone |
+| Answer a question card | Yes | The point of the phone |
+| Ask to stop a routine | Yes | It is a `say` with fixed text |
+| Register a secret through a secret card | Yes, with a record on the PC | The user's choice; see below |
 | Edit description, fix or forget memory | No, shown with "edit on the PC" | Rare, and each one rewrites a file the manager relies on. Fewer write routes on the open road |
-| Secret card | Seen, not usable | See below |
 | Pair or remove devices | No | Only from the PC, so a phone can never add a phone |
 
 The remote listener has its own route table. Routes the phone cannot use do not exist there (they return `404`), rather than being refused by a flag.
 
 ### How the manager tells phone words from PC words
 
-Phone entries are the same `say` and `answer` entries in `from-user.jsonl`, with one more field:
+Phone entries are the same entries in `from-user.jsonl`, with one more field:
 
 ```json
 {"id":"d-20261119-094102-5c1e","at":"2026-11-19T09:41:02+09:00","type":"answer","ask":"q-1119","text":"手元で試す","delivery":"sent","via":"phone:my phone"}
 ```
 
 - The doorbell is unchanged (`kantoku-bot: <id>`, no text in the letter).
-- They carry the same weight as words typed in chat. The device check and the PIN are what make that safe; the manager does not second-guess a channel the user set up.
+- They carry the same weight as words typed in chat. That is the user's choice; the manager does not second-guess it.
 - The manager quotes them as `kantoku bot (my phone) から: …`, so the chat and decisions.md show which device spoke.
 - SKILL.md "5. External input" gains one sentence: an entry with `via` is still the user's words; quote the device name.
 
 ### Secret cards on the phone
 
-**Not on the phone.** The card shows the request and the exact command, with "enter this on the PC" in place of the field and the Register button. Reasons:
+The phone shows the same secret card as the PC: the request, the exact command, a password field, and "登録". The value goes from the phone through Tailscale (WireGuard) and Serve's HTTPS to the remote listener, then only to the command's standard input, the same way as on the PC. It is never written to a file, a log, the page's storage, or a notification.
 
-1. Pressing Register is itself the approval ("Registering counts as asking" in SKILL.md). The strongest approval the design has should stay on the PC, behind the local-only checks.
-2. A secret pasted on a phone usually comes from the phone's clipboard, which other apps on the phone can read.
-3. A stolen phone with the PIN seen over a shoulder could register a value of the thief's choosing as the user's CI token.
+**The clipboard risk.** A secret pasted on a phone almost always comes through the clipboard, and a phone's clipboard is less private than it looks:
 
-The card's time limit (30 minutes) still runs, so a card that waits too long expires and the child asks again later.
+- Keyboard apps (Gboard, Samsung Keyboard, and others) keep a clipboard history, sometimes for an hour or more, and some sync it to the cloud.
+- Apple's Universal Clipboard can copy it to the user's Mac or iPad nearby.
+- Other apps can read the clipboard when they come to the front. iOS and recent Android show a banner when they do; older Android versions do not.
+
+What the card does about it:
+
+- The field is `type="password"` with `autocomplete="off"`, `autocapitalize="off"`, and `spellcheck="false"`, so the keyboard does not learn it.
+- The card says, under the field: "スマホのクリップボードは、ほかのアプリやキーボードの履歴に残ることがあります。登録のあと消してください。"
+- After a successful Register, the card offers "クリップボードを空にする", which writes an empty string to the clipboard (`navigator.clipboard.writeText('')`, allowed because the user pressed it). It cannot clear a keyboard's own history; the line above says so.
+- The README suggests filling the field from a password manager instead of copying, where the phone allows it.
+
+**The record on the PC.** Every secret registered from a phone leaves a record the user sees on the PC:
+
+- The `secret-done` entry in `from-user.jsonl` gets `via: "phone:<device name>"`, like any phone entry. It still holds only the request id and the exit code.
+- The PC conversation shows it as a centered purple line: `📱 my phone から登録しました ・ gh secret set NPM_TOKEN --repo example-org/web ・ exit 0 ・ 8:02`.
+- The phone's row under "つないだ電話" shows its last registration (`lastSecret`: request id, command, time).
+- The manager quotes it as for any phone entry, so decisions.md has it too.
 
 ### Phone layout
 
-See the mockup. In words:
+See the phone mockup. In words:
 
-- **Two screens, not two columns.** The bot list fills the screen; pressing a row opens the conversation; `‹` goes back. The PC's two-column layout is kept above 720 px.
-- **Header** in a conversation: back button, small face, name, status word. Pressing the name opens the info sheet from the bottom (a bottom sheet with a grab bar), not from the side.
-- **Question cards** stack their choices full width, recommended first and filled, each at least 44 px tall for a thumb.
-- **Input** is 16 px text, so iOS does not zoom on focus; the send button is a round `↑`.
-- **Connection pill** in the list header: `● 家の PC` while reachable, `PC に届きません` when the last request failed.
-- **Pairing screen**: one face, a short line, six digit boxes, one button.
-- **Notifications** use the same two titles as the desktop.
-- Faces, colors, copy, fonts, light and dark themes are the PC page's, unchanged.
+- **Two screens, not two columns.** The bot list fills the screen; pressing a row slides the conversation in; `‹` slides it back. The PC's two-column layout is kept above 720 px.
+- **List** is glass cards with the face, name, last line, and a pill: orange "あなた待ち", purple "秘密". The filter pills sit above it.
+- **Header** in a conversation: round back button, small face, name, status. Pressing the name springs the info sheet up from the bottom (a floating sheet with a grab bar and folding sections).
+- **Question cards** have a gradient border and stack their choices full width, recommended first and filled, each at least 44 px tall.
+- **Input** is a floating glass pill with 16 px text, so iOS does not zoom on focus; the send button is a round `↑`.
+- **Connection pill** in the list header: a pulsing green dot and `家の PC` while reachable, `PC に届きません` when the last request failed.
+- **Pairing screen**: one face, a short line, six digit boxes, the warning, one button; a green check pops in when paired.
+- **Notifications** use the same two titles as the desktop and no file text.
 
 ## Safety summary
 
@@ -247,65 +323,77 @@ See the mockup. In words:
 | A stranger on the internet | Nothing listens off loopback. No router port. Funnel traffic has no identity header and is refused |
 | Another device or user in the tailnet, or a shared-in user | Owner login check, then the paired-device cookie |
 | A website open in the user's phone browser, including a page served by another machine in the tailnet (same site under `ts.net`) | Every POST needs the exact Origin, JSON, and `X-Kantoku-Bot`; no CORS preflight is answered. The SameSite cookie alone is not enough |
-| A lost or stolen phone, locked | Phone lock, then the PIN for writes; remove the device on the PC, and remove the phone from the tailnet in the Tailscale admin page |
-| A phone in someone else's hand, unlocked | They can read. Every write needs the PIN; five misses remove the device |
+| A lost or stolen phone, locked | The phone's own lock. Then remove it: Tailscale admin console from anywhere, or "外す" on the PC |
+| A paired phone in someone else's hand, unlocked | **Not stopped (the user's choice).** They act as the user, secrets included. Every action is labeled with the device on the PC. Stage 4's setting closes this |
 | Guessing the pairing code | Reachable only by the owner's tailnet devices; 10 minutes; 5 tries per code |
 | A forged doorbell letter | Unchanged: the letter only carries an id that selects an entry kantoku bot wrote |
-| A secret through the phone | Secret routes do not exist on the remote listener |
+| A secret value at rest | Never stored: standard input only, field cleared, no page storage, no logs |
+| A secret on the phone's clipboard | Warned on the card; one-press clipboard clear; password manager suggested |
 | A program on the PC running as the user | Out of scope, as today; it can already type into the user's terminals |
 
 One thing the user should know: Tailscale's HTTPS certificate puts the machine name and tailnet name in public certificate logs. The README tells the user to pick a machine name that says nothing about them.
+
+## Phone lock options (stage 4)
+
+A setting in the PC info panel under "つないだ電話", `phoneWrites`, kept in `~/.kantoku/.bot/settings.json`:
+
+| Value | What a phone write needs |
+|---|---|
+| `paired` (default, the user's current choice) | A paired phone |
+| `pin` | A paired phone and a 4 to 8 digit PIN with every write (scrypt on the PC; five misses in a row remove the phone) |
+| `passkey` | A paired phone and a passkey touch (Face ID, fingerprint) with every write, checked with WebAuthn on the PC |
+
+Only the PC can change it. Turning it on asks each paired phone to set its PIN or passkey the next time it writes. `pin` is small (`node:crypto` `scrypt`). `passkey` needs WebAuthn verification (CBOR, COSE keys) with no dependencies, so it is the larger of the two.
 
 ## Files and modules
 
 | File | Change |
 |---|---|
 | `bot/page/manifest.webmanifest`, `bot/page/sw.js`, `bot/page/icon-192.png`, `bot/page/icon-512.png` | New |
-| `bot/page/bot.js`, `bot/page/bot.css`, `bot/page/index.html` | Install button, notifications button, mobile layout, pairing and PIN screens, read-only edit and secret states |
+| `bot/page/bot.js`, `bot/page/bot.css`, `bot/page/index.html` | New look and motion, install and notifications buttons, phone layout, pairing screen, phone list in the info panel, secret record line |
 | `bot/notices.ts` | New, pure |
 | `bot/webpush.ts` | New, VAPID and `aes128gcm` |
-| `bot/devices.ts` | New: pairing codes, device store, PIN check |
+| `bot/devices.ts` | New: pairing codes, device store |
 | `bot/remote.ts` | New: the remote listener, its checks, its route table |
-| `bot/server.ts` | Serves the new page files; exposes routes so `remote.ts` can mount the shared read and write handlers |
-| `bot/cli.ts` | `--login-item`, `--remote`, `--owner`, `--remote-host` |
+| `bot/server.ts` | Serves the new page files; exposes routes so `remote.ts` can mount the shared read, write, and secret handlers |
+| `bot/cli.ts` | `--login-item`, `--remote`, `--owner`, `--remote-host`, `--remove-phones` |
 | `skills/kantoku/SKILL.md` | One sentence on `via` in "5. External input" |
-| `README.md` | Install as an app, notifications, phone setup with Tailscale, safety |
+| `README.md` | Install as an app, notifications, phone setup with Tailscale, the risk of a paired phone, removing a phone, clipboard advice |
 
 ## Left to the builder
 
 - Icon drawing, and the English labels for the new buttons and notices.
-- Exact wording of the pairing and PIN screens.
+- Exact wording of the pairing screen.
 - Whether the service worker refreshes its shell cache by version string or by hash.
+- Exact blob colors and timings, within "Look and motion".
 
 ## Calls made by the designer (the user can overturn them)
 
-- PWA plus Tailscale Serve, desktop first.
 - Remote port `4871`.
-- A PIN on every phone write; passkeys later.
-- The phone cannot edit the description or memory, and cannot use secret cards.
+- The phone cannot edit the description or memory.
 - Notifications carry the bot name and a fixed phrase, never text from the files.
 - Device cookies last 30 days from last use.
+- The desktop mockup is a new file (`kantoku-app-desktop.html`); `kantoku-bot.html` stays as the record of the current page.
 
 ## Later
 
-- **Passkey unlock** in place of the PIN, once a no-dependency WebAuthn check is worth its size.
 - **Tray shell.** If the PWA window without a tray falls short in daily use, a thin Tauri shell can load `http://127.0.0.1:4870` and add a tray icon and the badge. It would live in its own repo with its own releases, so the plugin stays plain files.
 
 ## Adversarial review (2026-11-19)
 
-Two reviewers attacked a draft of this design with runs against the real `bot/` code and small prototypes. Ten findings survived a rerun; each is fixed above.
+Two reviewers attacked a draft of this design with runs against the real `bot/` code and small prototypes. Ten findings survived a rerun.
 
-| Finding | Fix in this design |
+| Finding | Outcome in this design |
 |---|---|
-| A cached `/` keeps a dead per-start token, so writes fail after a restart | The service worker never caches `/` |
-| An open secret card never notified and the badge showed 0 | Open secret cards count as `waiting` and in the badge |
-| Reports have no id; text-based ids re-fire on edits, minute-based ids miss a second report | Done id = report time plus position among reports with that time |
-| `redact()` keeps paths and short unlabeled tokens, which would reach the lock screen and the push service | Notifications carry no file text |
-| The same notice could show twice (page plus push, or `localhost` plus `127.0.0.1`) | Same tag on both paths, push dropped while a window is visible, one origin |
-| A login item pinned to one plugin version keeps starting the old version | A launcher picks the newest version folder at login |
-| A form on another site could burn the pairing code | Every remote POST needs the exact Origin, JSON, and `X-Kantoku-Bot`, before any try counts |
-| `ts.net` is a public suffix, so another tailnet machine is same-site and could send five wrong PINs | Same check; the SameSite cookie is not relied on |
-| A 15-minute unlock let someone who picked up the phone write without the PIN | A PIN on every write |
-| Notification text could carry paths and tokens | No file text in notifications |
+| A cached `/` keeps a dead per-start token, so writes fail after a restart | Fixed: the service worker never caches `/` |
+| An open secret card never notified and the badge showed 0 | Fixed: open secret cards count as `waiting` and in the badge |
+| Reports have no id; text-based ids re-fire on edits, minute-based ids miss a second report | Fixed: done id = report time plus position among reports with that time |
+| `redact()` keeps paths and short unlabeled tokens, which would reach the lock screen and the push service | Fixed: notifications carry no file text |
+| The same notice could show twice (page plus push, or `localhost` plus `127.0.0.1`) | Fixed: same tag on both paths, push dropped while a window is visible, one origin |
+| A login item pinned to one plugin version keeps starting the old version | Fixed: a launcher picks the newest version folder at login |
+| A form on another site could burn the pairing code | Fixed: every remote POST needs the exact Origin, JSON, and `X-Kantoku-Bot`, before any try counts |
+| `ts.net` is a public suffix, so another tailnet machine is same-site and its forms carry the device cookie | Fixed: same check; the SameSite cookie is not relied on |
+| A phone in another person's hand can write as the user (proved against a 15-minute unlock: "deploy: yes" three minutes later) | **Accepted by the user** (2026-11-19): no PIN. Written in "The risk the user accepted"; stage 4 adds the setting that closes it |
+| Notification text could carry paths and tokens | Fixed: no file text in notifications |
 
 Not proven by a run, left to plan Task 7 with a real phone and Tailscale: that Serve strips a client-sent `Tailscale-User-Login`, `__Host-` cookie behavior behind Serve, and push on iOS.

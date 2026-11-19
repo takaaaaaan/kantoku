@@ -5,398 +5,418 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>kantoku bot mobile</title>
 <!-- Mockup only. All data below is made up. No external loads. Nothing is sent anywhere.
-     Shows kantoku bot on a phone: the bot list, one conversation with a question card,
-     the info sheet, a secret card that only works on the PC, pairing, and notifications. -->
+     kantoku bot on a phone: list and conversation as two sliding screens, a bottom sheet for info,
+     a secret card that works on the phone, pairing, and lock-screen notifications. -->
 <style>
 :root {
-  --bg: #f2f5f7;
-  --panel: #ffffff;
-  --ink: #1f2a33;
-  --muted: #6b7a86;
-  --line: #e3e9ee;
-  --select: #e9f1f7;
-  --wait: #e8742a;
-  --wait-soft: #fff1e6;
-  --work: #3aa676;
-  --bubble: #ffffff;
-  --mine: #dceefb;
-  --lock: #7a6bd1;
-  --lock-soft: #f0edff;
-  --shadow: 0 1px 2px rgba(31, 42, 51, .06), 0 4px 16px rgba(31, 42, 51, .06);
+  --bg-1: #fdf2f6; --bg-2: #eef4ff; --bg-3: #fff6e8;
+  --blob-a: #ffc4d6; --blob-b: #bfdcff; --blob-c: #ffe1a8;
+  --glass: rgba(255, 255, 255, .62); --glass-strong: rgba(255, 255, 255, .88); --glass-line: rgba(255, 255, 255, .9);
+  --ink: #1d2433; --muted: #6f7a8c; --line: rgba(29, 36, 51, .08);
+  --accent: #ff7a45; --accent-2: #ff4f8b; --accent-soft: rgba(255, 122, 69, .12);
+  --work: #22b07d; --lock: #7c6cf0; --lock-soft: rgba(124, 108, 240, .12); --warn: #d9822b;
+  --mine: linear-gradient(135deg, #6a8dff, #8f7bff);
+  --shadow: 0 1px 2px rgba(29, 36, 51, .05), 0 10px 26px rgba(29, 36, 51, .08);
+  --shadow-lift: 0 18px 40px rgba(29, 36, 51, .16);
+  --stage: #e9edf3;
   --font: "Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --r: 18px;
-  --stage: #dfe5ea;
+  --spring: cubic-bezier(.34, 1.56, .64, 1); --ease: cubic-bezier(.2, .8, .2, 1);
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
-    --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
-    --mine: #1f3446; --lock: #a79bf0; --lock-soft: #2a2640; --shadow: 0 1px 2px rgba(0,0,0,.3);
-    --stage: #0d1013; color-scheme: dark;
+    --bg-1: #0f1220; --bg-2: #121a2c; --bg-3: #1a1324; --blob-a: #6b2a4d; --blob-b: #23406e; --blob-c: #5a3d16;
+    --glass: rgba(26, 31, 48, .62); --glass-strong: rgba(30, 36, 56, .92); --glass-line: rgba(255, 255, 255, .08);
+    --ink: #eef1f7; --muted: #9aa5b8; --line: rgba(255, 255, 255, .08); --accent-soft: rgba(255, 122, 69, .18); --lock-soft: rgba(124, 108, 240, .22);
+    --shadow: 0 10px 26px rgba(0,0,0,.35); --shadow-lift: 0 18px 40px rgba(0,0,0,.5); --stage: #0a0c12; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
-  --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
-  --mine: #1f3446; --lock: #a79bf0; --lock-soft: #2a2640; --shadow: 0 1px 2px rgba(0,0,0,.3);
-  --stage: #0d1013; color-scheme: dark;
+  --bg-1: #0f1220; --bg-2: #121a2c; --bg-3: #1a1324; --blob-a: #6b2a4d; --blob-b: #23406e; --blob-c: #5a3d16;
+  --glass: rgba(26, 31, 48, .62); --glass-strong: rgba(30, 36, 56, .92); --glass-line: rgba(255, 255, 255, .08);
+  --ink: #eef1f7; --muted: #9aa5b8; --line: rgba(255, 255, 255, .08); --accent-soft: rgba(255, 122, 69, .18); --lock-soft: rgba(124, 108, 240, .22);
+  --shadow: 0 10px 26px rgba(0,0,0,.35); --shadow-lift: 0 18px 40px rgba(0,0,0,.5); --stage: #0a0c12; color-scheme: dark;
 }
-
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--stage); color: var(--ink); font: 14px/1.6 var(--font); }
 button, textarea, input { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- review page around the phones (not part of the app) ---------- */
-.intro { max-width: 1100px; margin: 0 auto; padding: 24px 16px 8px; }
-.intro h1 { font-size: 20px; margin: 0 0 4px; }
-.intro p { margin: 0; color: var(--muted); font-size: 13px; }
-.stage { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; padding: 20px 16px 48px; }
-.shot { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.shot figcaption { font-size: 12.5px; color: var(--muted); max-width: 300px; text-align: center; }
-.shot figcaption b { color: var(--ink); }
-figure { margin: 0; }
+.intro { max-width: 1240px; margin: 0 auto; padding: 24px 16px 4px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.intro h1 { font-size: 20px; margin: 0; }
+.intro p { margin: 0; color: var(--muted); font-size: 13px; flex: 1 1 320px; }
+.intro .tools { display: flex; gap: 6px; }
+.intro .tools button { border: 0; background: var(--line); border-radius: 10px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+.stage { display: flex; flex-wrap: wrap; gap: 30px; justify-content: center; padding: 20px 16px 48px; }
+figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+figcaption { font-size: 12.5px; color: var(--muted); max-width: 290px; text-align: center; }
+figcaption b { color: var(--ink); }
 
-/* ---------- the phone ---------- */
-.phone { width: 300px; height: 620px; border-radius: 40px; background: var(--bg); position: relative; overflow: hidden;
-  box-shadow: 0 0 0 10px #10151a, 0 18px 40px rgba(0,0,0,.25); display: flex; flex-direction: column; }
-.notch { height: 30px; flex: none; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; font-size: 11px; font-weight: 700; background: var(--panel); }
-.screen { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
-
-/* ---------- top bar ---------- */
-.bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 52px; }
-.bar .title { font-weight: 700; font-size: 16px; flex: 1; }
-.back { border: 0; background: none; font-size: 20px; padding: 2px 6px; border-radius: 10px; cursor: pointer; }
-.back:hover { background: var(--select); }
-.head-name { border: 0; background: none; display: flex; align-items: center; gap: 8px; padding: 2px 8px 2px 2px; border-radius: 99px; cursor: pointer; min-width: 0; flex: 1; text-align: left; }
-.head-name:hover { background: var(--select); }
-.head-name strong { display: block; font-size: 15px; line-height: 1.2; }
-.head-name small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.2; }
-.conn { font-size: 10.5px; color: var(--muted); background: var(--select); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+/* ---------- phone ---------- */
+.phone { width: 300px; height: 630px; border-radius: 42px; position: relative; overflow: hidden; isolation: isolate;
+  background: linear-gradient(160deg, var(--bg-1), var(--bg-2) 60%, var(--bg-3)); box-shadow: 0 0 0 10px #0d1117, 0 24px 50px rgba(0,0,0,.28); }
+.phone::before, .phone::after { content: ""; position: absolute; width: 220px; height: 220px; border-radius: 50%; filter: blur(50px); opacity: .8; z-index: -1; animation: drift 22s ease-in-out infinite alternate; }
+.phone::before { background: var(--blob-a); left: -80px; top: -60px; }
+.phone::after { background: var(--blob-b); right: -90px; bottom: 40px; animation-duration: 28s; }
+@keyframes drift { to { transform: translate(40px, 30px) scale(1.15); } }
+.status { height: 34px; display: flex; justify-content: space-between; align-items: center; padding: 6px 26px 0; font-size: 11.5px; font-weight: 700; }
+.views { position: absolute; inset: 34px 0 0; overflow: hidden; }
+.view { position: absolute; inset: 0; display: flex; flex-direction: column; transition: transform .5s var(--ease), opacity .4s, filter .4s; }
+.view.behind { transform: translateX(-28%); opacity: 0; filter: blur(2px); pointer-events: none; }
+.view.ahead { transform: translateX(100%); }
 
 /* ---------- face ---------- */
-.face { position: relative; width: 44px; height: 44px; border-radius: 50%; background: var(--c); flex: none; }
-.face.s { width: 34px; height: 34px; }
-.face.big { width: 64px; height: 64px; }
-.face svg { width: 100%; height: 100%; display: block; }
-.face .dot { position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 50%; border: 3px solid var(--panel); background: var(--muted); }
-.face .dot.work { background: var(--work); }
-.face .dot.wait { background: var(--wait); }
+.face { position: relative; width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff8, transparent 45%), var(--c); flex: none; display: block; }
+.face svg { position: relative; z-index: 1; width: 100%; height: 100%; display: block; }
+.face::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; opacity: 0; }
+.face.working::before { opacity: 1; background: conic-gradient(var(--work), transparent 60%); animation: spin 1.6s linear infinite; -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%); mask: radial-gradient(circle, transparent 60%, #000 62%); }
+.face.waiting { animation: breathe 2.6s ease-in-out infinite; }
+.face.waiting::before { opacity: 1; inset: -5px; background: radial-gradient(circle, transparent 58%, rgba(255, 122, 69, .45) 62%, transparent 72%); animation: halo 2.6s ease-out infinite; }
+.face.asleep { filter: saturate(.6); }
+.face.asleep::after { content: "z"; position: absolute; right: -4px; top: -8px; font-size: 12px; font-weight: 700; color: var(--muted); animation: float-z 3s ease-in-out infinite; z-index: 2; }
+@keyframes spin { to { transform: rotate(1turn); } }
+@keyframes breathe { 50% { transform: scale(1.05); } }
+@keyframes halo { 0% { transform: scale(.9); opacity: .9; } 100% { transform: scale(1.25); opacity: 0; } }
+@keyframes float-z { 50% { transform: translateY(-6px); opacity: 1; } 0%, 100% { opacity: .3; } }
+.face.s { width: 32px; height: 32px; } .face.xl { width: 76px; height: 76px; }
 
-/* ---------- list ---------- */
-.list { list-style: none; margin: 0; padding: 6px 8px; overflow-y: auto; flex: 1; }
-.row { width: 100%; display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 10px 8px; border: 0; background: none; border-radius: 14px; text-align: left; cursor: pointer; min-height: 64px; }
-.row:hover { background: var(--select); }
+/* ---------- list screen ---------- */
+.top { padding: 8px 18px 6px; display: flex; align-items: center; justify-content: space-between; }
+.top h2 { font-size: 26px; margin: 0; letter-spacing: .01em; }
+.conn { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); background: var(--glass-strong); border-radius: 99px; padding: 3px 10px; box-shadow: var(--shadow); }
+.live { width: 7px; height: 7px; border-radius: 50%; background: var(--work); animation: ping 2.4s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(34,176,125,.5); } 70%, 100% { box-shadow: 0 0 0 7px rgba(34,176,125,0); } }
+.seg { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--line); border-radius: 99px; padding: 3px; margin: 6px 16px 8px; }
+.seg button { position: relative; z-index: 1; border: 0; background: none; padding: 6px 0; border-radius: 99px; cursor: pointer; font-size: 12px; color: var(--muted); }
+.seg button[aria-pressed="true"] { color: var(--ink); font-weight: 700; }
+.seg .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 99px; background: var(--glass-strong); box-shadow: var(--shadow); transition: transform .45s var(--spring); }
+.list { list-style: none; margin: 0; padding: 4px 12px 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.list li { animation: rise .5s var(--ease) both; animation-delay: calc(var(--i) * 70ms + 120ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+.row { width: 100%; display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--glass-line); background: var(--glass); border-radius: 20px;
+  text-align: left; cursor: pointer; box-shadow: var(--shadow); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .3s var(--spring); min-height: 70px; }
+.row:active { transform: scale(.97); }
 .row > div { min-width: 0; }
 .row .name { font-weight: 700; }
 .row .say { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pill { background: var(--wait); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
-.section-label { font-size: 11px; color: var(--muted); padding: 10px 14px 2px; letter-spacing: .04em; }
-.foot { padding: 10px 14px 16px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); background: var(--panel); display: flex; gap: 6px; align-items: center; }
+.pill { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 99px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); white-space: nowrap; }
+.pill.lock { background: var(--lock); }
 
-/* ---------- chat ---------- */
-.chat { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
-.day { align-self: center; color: var(--muted); font-size: 11px; background: var(--panel); padding: 1px 10px; border-radius: 99px; border: 1px solid var(--line); }
-.msg { display: grid; grid-template-columns: 34px 1fr; gap: 8px; max-width: 100%; }
+/* ---------- conversation screen ---------- */
+.bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px 8px; }
+.back { border: 0; background: var(--glass-strong); width: 34px; height: 34px; border-radius: 50%; font-size: 18px; cursor: pointer; box-shadow: var(--shadow); flex: none; }
+.head-name { border: 0; background: none; display: flex; align-items: center; gap: 8px; cursor: pointer; text-align: left; min-width: 0; padding: 2px 8px 2px 2px; border-radius: 99px; }
+.head-name strong { display: block; font-size: 15px; line-height: 1.2; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); } .chip .dot.working { background: var(--work); } .chip .dot.waiting { background: var(--accent); }
+.chat { flex: 1; overflow-y: auto; padding: 8px 12px 90px; display: flex; flex-direction: column; gap: 10px; }
+.day { align-self: center; color: var(--muted); font-size: 10.5px; padding: 1px 10px; border-radius: 99px; background: var(--glass-strong); }
+.msg { display: grid; grid-template-columns: 32px 1fr; gap: 8px; animation: bubble-in .5s var(--spring) both; animation-delay: calc(var(--i, 0) * 60ms + 200ms); }
+@keyframes bubble-in { from { opacity: 0; transform: translateY(12px) scale(.96); filter: blur(4px); } }
 .msg.mine { grid-template-columns: 1fr; align-self: flex-end; max-width: 85%; }
-.bubble { background: var(--bubble); border-radius: 4px var(--r) var(--r) var(--r); padding: 9px 12px; box-shadow: var(--shadow); min-width: 0; overflow-wrap: anywhere; }
-.mine .bubble { background: var(--mine); border-radius: var(--r) 4px var(--r) var(--r); }
+.bubble { background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 6px 20px 20px 20px; padding: 9px 12px; box-shadow: var(--shadow); min-width: 0; overflow-wrap: anywhere; position: relative; }
+.mine .bubble { background: var(--mine); color: #fff; border: 0; border-radius: 20px 6px 20px 20px; }
 .bubble time { display: block; color: var(--muted); font-size: 10.5px; margin-top: 3px; }
-.bubble.ask { background: var(--wait-soft); }
-.bubble.secret { background: var(--lock-soft); }
-.tag { display: block; font-size: 11px; font-weight: 700; color: var(--wait); }
+.mine .bubble time { color: rgba(255,255,255,.8); }
+.tag { display: flex; gap: 6px; font-size: 10.5px; font-weight: 700; color: var(--accent); margin-bottom: 2px; }
+.ask, .secret { border: 0; }
+.ask::before, .secret::before { content: ""; position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; background: linear-gradient(135deg, var(--accent), var(--accent-2), #ffc46b);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+.secret::before { background: linear-gradient(135deg, var(--lock), #b49cff); }
 .secret .tag { color: var(--lock); }
-/* Choices stack full-width on a phone: big thumb targets, recommended first. */
-.choices { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.choice { border: 1.5px solid var(--wait); background: var(--panel); border-radius: 14px; padding: 10px 14px; cursor: pointer; text-align: left; min-height: 44px; }
-.choice.rec { background: var(--wait); color: #fff; font-weight: 700; }
-.answered { margin-top: 8px; font-size: 12px; color: var(--muted); }
-.cmd { display: block; font-family: var(--mono); font-size: 11.5px; background: var(--panel); border-radius: 8px; padding: 6px 8px; margin: 8px 0 6px; overflow-wrap: anywhere; }
-.lockline { display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; color: var(--ink); }
+.fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .45s var(--ease), opacity .3s; }
+.fold > div { overflow: hidden; min-height: 0; }
+.fold.closed { grid-template-rows: 0fr; opacity: 0; }
+.choices { display: flex; flex-direction: column; gap: 7px; padding-top: 9px; }
+.choice { border: 1px solid var(--line); background: var(--glass-strong); border-radius: 14px; padding: 10px 14px; cursor: pointer; text-align: left; min-height: 44px; transition: transform .3s var(--spring); }
+.choice:active { transform: scale(.96); }
+.choice.rec { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border: 0; font-weight: 700; }
+.answered { display: inline-flex; margin-top: 6px; font-size: 11.5px; padding: 2px 10px; border-radius: 99px; background: var(--accent-soft); animation: bubble-in .4s var(--spring) both; }
+.cmd { display: block; font-family: var(--mono); font-size: 11px; background: var(--lock-soft); border-radius: 10px; padding: 6px 8px; margin: 6px 0; overflow-wrap: anywhere; }
+.secret input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; background: var(--glass); font-size: 16px; }
+.btn { border: 1px solid var(--line); background: var(--glass-strong); border-radius: 12px; padding: 9px 14px; cursor: pointer; min-height: 42px; transition: transform .3s var(--spring); }
+.btn:active { transform: scale(.96); }
+.btn.lockb { background: var(--lock); border-color: var(--lock); color: #fff; font-weight: 700; }
+.btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: #fff; font-weight: 700; }
+.btn-row { display: flex; gap: 6px; margin-top: 7px; }
+.btn-row .btn { flex: 1; }
+.warn { display: flex; gap: 6px; font-size: 11.5px; color: var(--warn); margin-top: 7px; line-height: 1.5; }
+.composer { position: absolute; left: 10px; right: 10px; bottom: 14px; display: flex; gap: 8px; align-items: flex-end; padding: 6px 6px 6px 14px; border-radius: 24px;
+  background: var(--glass-strong); border: 1px solid var(--glass-line); box-shadow: var(--shadow-lift); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.composer textarea { flex: 1; min-width: 0; border: 0; background: none; resize: none; padding: 8px 0; font-size: 16px; outline: none; max-height: 110px; }
+.send { width: 38px; height: 38px; border: 0; border-radius: 50%; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); font-size: 17px; flex: none; cursor: pointer; transition: transform .35s var(--spring), opacity .2s; }
+.send:disabled { opacity: .35; transform: scale(.9); }
 
-.composer { display: flex; gap: 8px; align-items: flex-end; padding: 8px 10px 14px; background: var(--panel); border-top: 1px solid var(--line); }
-.composer textarea { flex: 1; min-width: 0; resize: none; border: 1.5px solid var(--line); border-radius: 18px; padding: 9px 12px; background: var(--bg); min-height: 42px; max-height: 120px; font-size: 16px; }
-.composer textarea:focus { border-color: var(--wait); outline: none; }
-.send { border: 0; background: var(--wait); color: #fff; font-weight: 700; border-radius: 50%; width: 42px; height: 42px; cursor: pointer; flex: none; font-size: 18px; }
-.send:disabled { opacity: .45; cursor: default; }
-
-/* ---------- bottom sheet (info) ---------- */
-.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.25); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 4; }
+/* ---------- bottom sheet ---------- */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.25); opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 4; }
 .scrim.open { opacity: 1; pointer-events: auto; }
-.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 82%; background: var(--panel); border-radius: 22px 22px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,.15);
-  transform: translateY(105%); transition: transform .22s ease; z-index: 5; display: flex; flex-direction: column; }
+.sheet { position: absolute; left: 6px; right: 6px; bottom: 6px; max-height: 80%; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 30px; box-shadow: var(--shadow-lift);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); transform: translateY(110%); transition: transform .55s var(--spring); z-index: 5; display: flex; flex-direction: column; }
 .sheet.open { transform: none; }
 .grab { width: 40px; height: 5px; border-radius: 99px; background: var(--line); margin: 8px auto 0; flex: none; }
-.sheet-top { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px 10px; text-align: center; }
-.sheet-top h2 { margin: 2px 0 0; font-size: 17px; }
-.sheet-body { overflow-y: auto; padding: 0 16px 20px; display: flex; flex-direction: column; gap: 16px; }
-.sec h3 { margin: 0 0 6px; font-size: 11.5px; color: var(--muted); letter-spacing: .06em; }
-.sec p { margin: 0; }
-.sec ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.sec li { background: var(--bg); border-radius: 12px; padding: 8px 12px; font-size: 13px; }
-.sec li small { display: block; color: var(--muted); font-size: 11px; }
-.pc-only { font-size: 11.5px; color: var(--muted); }
+.sheet-top { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 16px; flex: none; }
+.sheet-top h3 { margin: 4px 0 0; font-size: 17px; }
+.sheet-body { overflow-y: auto; padding: 4px 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.acc { flex: none; border-radius: 16px; background: var(--glass); border: 1px solid var(--glass-line); overflow: hidden; }
+.acc > button { width: 100%; border: 0; background: none; padding: 10px 14px; display: flex; justify-content: space-between; cursor: pointer; font-weight: 700; font-size: 13px; }
+.acc > button .chev { transition: transform .35s var(--spring); color: var(--muted); }
+.acc[data-open="true"] > button .chev { transform: rotate(90deg); }
+.acc .fold > div > div { padding: 0 14px 12px; font-size: 13px; }
+.acc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.acc li { background: var(--line); border-radius: 12px; padding: 7px 10px; }
+.acc li small { display: block; color: var(--muted); font-size: 11px; }
+.pc-only { color: var(--muted); font-size: 11.5px; margin: 6px 0 0; }
 
-/* ---------- pairing / notifications ---------- */
-.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
-.center h2 { margin: 0; font-size: 18px; }
-.center p { margin: 0; color: var(--muted); font-size: 13px; }
+/* ---------- pairing ---------- */
+.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px 22px 30px; text-align: center; }
+.center h3 { margin: 0; font-size: 19px; }
+.center p { margin: 0; color: var(--muted); font-size: 12.5px; }
 .code { display: flex; gap: 6px; }
-.code input { width: 34px; height: 44px; text-align: center; font-size: 20px; font-weight: 700; border: 1.5px solid var(--line); border-radius: 10px; background: var(--panel); }
-.btn { border: 1.5px solid var(--line); background: var(--panel); border-radius: 99px; padding: 10px 18px; cursor: pointer; min-height: 44px; }
-.btn.primary { background: var(--wait); border-color: var(--wait); color: #fff; font-weight: 700; }
-.wall { background: linear-gradient(160deg, #8ec5f0, #f7a8b8); }
-.wall .notch { background: transparent; color: #fff; }
-.clock { color: #fff; text-align: center; font-size: 56px; font-weight: 300; line-height: 1; margin-top: 30px; }
-.date { color: #fff; text-align: center; font-size: 13px; margin-top: 6px; }
-.notes { display: flex; flex-direction: column; gap: 8px; padding: 26px 10px; }
-.note { background: rgba(255,255,255,.82); color: #1f2a33; border-radius: 18px; padding: 10px 12px; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
-.note .app { width: 30px; height: 30px; border-radius: 8px; background: #f7a8b8; display: grid; place-items: center; font-size: 15px; }
-.note b { font-size: 12.5px; display: block; }
-.note span { font-size: 12.5px; }
-.note small { color: #55626d; font-size: 10.5px; float: right; }
-.toast { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 7px 14px; border-radius: 99px; font-size: 12px; z-index: 9; white-space: nowrap; }
+.code input { width: 34px; height: 46px; text-align: center; font-size: 20px; font-weight: 700; border: 1.5px solid var(--glass-line); border-radius: 12px; background: var(--glass-strong); box-shadow: var(--shadow); transition: transform .3s var(--spring), border-color .2s; }
+.code input:focus { border-color: var(--accent); transform: translateY(-3px); outline: none; }
+.notice { background: var(--glass-strong); border-radius: 16px; padding: 10px 12px; font-size: 11.5px; text-align: left; color: var(--ink); box-shadow: var(--shadow); display: flex; gap: 8px; }
+.done-mark { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; color: #fff; background: linear-gradient(135deg, var(--work), #6ad9a8); animation: pop .6s var(--spring) both; }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } }
 
-.typing { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 3px; }
-.typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--work); animation: hop 1.2s infinite; }
+/* ---------- lock screen ---------- */
+.wall { background: linear-gradient(170deg, #9cc9ff, #ffb3c7 70%, #ffd38a); }
+.wall::before, .wall::after { display: none; }
+.wall .status { color: #fff; }
+.clock { color: #fff; text-align: center; font-size: 60px; font-weight: 300; line-height: 1; margin-top: 34px; letter-spacing: -.02em; }
+.date { color: #fff; text-align: center; font-size: 13px; margin-top: 6px; }
+.notes { display: flex; flex-direction: column; gap: 8px; padding: 30px 10px; }
+.note { background: rgba(255,255,255,.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); color: #1d2433; border-radius: 20px; padding: 10px 12px;
+  display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,.12); animation: drop .6s var(--spring) both; animation-delay: calc(var(--i) * 400ms + 300ms); }
+@keyframes drop { from { opacity: 0; transform: translateY(-24px) scale(.92); } }
+.note b { font-size: 12.5px; display: block; } .note span { font-size: 12px; } .note small { color: #55626d; font-size: 10.5px; float: right; }
+.replay { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); border: 0; background: rgba(255,255,255,.6); border-radius: 99px; padding: 4px 12px; font-size: 11px; cursor: pointer; }
+
+.toast { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--ink); color: var(--bg-1); padding: 7px 14px; border-radius: 99px; font-size: 12px; z-index: 9; white-space: nowrap; animation: toast 2s var(--ease) both; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 14px) scale(.9); } 12%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+.typing { display: inline-flex; gap: 3px; } .typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--work); animation: hop 1.2s infinite; }
 .typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
-@keyframes hop { 0%, 60%, 100% { transform: none; opacity: .5 } 30% { transform: translateY(-3px); opacity: 1 } }
-@media (prefers-reduced-motion: reduce) { .typing i { animation: none; } .sheet, .scrim { transition: none; } }
+@keyframes hop { 30% { transform: translateY(-3px); } }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation: none !important; transition: none !important; }
 @media (max-width: 360px) { .phone { width: 100%; } }
 </style>
 </head>
 <body>
 <div class="intro">
   <h1>kantoku bot をスマホで</h1>
-  <p>試作です。データは作りものです。外へは何も送りません。左の電話は押して動かせます(一覧 → 会話 → 名前を押すと情報)。</p>
+  <p>試作です。データは作りものです。外へは何も送りません。左の電話は押して動かせます(一覧 → 会話 → 名前を押すと下から情報)。</p>
+  <div class="tools"><button id="motion">動きを止める</button><button id="theme">明るさを切り替え</button></div>
 </div>
 
 <div class="stage">
-  <figure class="shot">
-    <div class="phone" id="live">
-      <div class="notch"><span>9:41</span><span>●●●</span></div>
-      <div class="screen" id="liveScreen"></div>
-    </div>
-    <figcaption><b>1. 一覧と会話</b><br>一覧で選ぶと会話が開く。左上の ‹ で戻る。名前を押すと下から情報が出る。</figcaption>
+  <figure>
+    <div class="phone" id="p1"><div class="status"><span>9:41</span><span>●●●</span></div><div class="views" id="v1"></div></div>
+    <figcaption><b>1. 一覧と会話</b><br>一覧で選ぶと会話が横から入ってくる。‹ で戻る。名前を押すと情報が下からはね上がる。</figcaption>
   </figure>
-
-  <figure class="shot">
-    <div class="phone">
-      <div class="notch"><span>9:41</span><span>●●●</span></div>
-      <div class="screen" id="secretScreen"></div>
-    </div>
-    <figcaption><b>2. 秘密の入力カードは PC だけ</b><br>スマホではカードが見えるだけ。値を貼る欄は出ない。</figcaption>
+  <figure>
+    <div class="phone"><div class="status"><span>9:41</span><span>●●●</span></div><div class="views" id="v2"></div></div>
+    <figcaption><b>2. 秘密の入力カード</b><br>スマホでも貼って登録できる。登録すると、PC の会話にも「my phone から登録しました」と残る。</figcaption>
   </figure>
-
-  <figure class="shot">
-    <div class="phone">
-      <div class="notch"><span>9:41</span><span>●●●</span></div>
-      <div class="screen">
-        <div class="center">
-          <span id="pairFace"></span>
-          <h2>この電話をつなぐ</h2>
-          <p>PC の kantoku bot で「電話をつなぐ」を押すと、6 けたの数字が出ます。10 分だけ使えます。</p>
-          <div class="code" aria-label="6 けたの数字">
-            <input inputmode="numeric" maxlength="1" value="4"><input inputmode="numeric" maxlength="1" value="8"><input inputmode="numeric" maxlength="1" value="2">
-            <input inputmode="numeric" maxlength="1" value="7"><input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1">
-          </div>
-          <button class="btn primary" type="button">つなぐ</button>
-          <p style="font-size:11.5px">つないだ電話は PC の一覧から外せます。</p>
-        </div>
-      </div>
-    </div>
-    <figcaption><b>3. はじめてつなぐとき</b><br>家の外からは Tailscale を通して開く。最初の 1 回だけ、PC に出た数字を入れる。</figcaption>
+  <figure>
+    <div class="phone"><div class="status"><span>9:41</span><span>●●●</span></div><div class="views" id="v3"></div></div>
+    <figcaption><b>3. はじめてつなぐとき</b><br>Tailscale を通して開き、PC に出た 6 けたを入れる。つないだ電話は、あなたとして答えられる。</figcaption>
   </figure>
-
-  <figure class="shot">
-    <div class="phone wall">
-      <div class="notch"><span></span><span>●●●</span></div>
-      <div class="clock">9:41</div>
-      <div class="date">11月19日 木曜日</div>
-      <div class="notes">
-        <div class="note"><span class="app">●</span><div><small>いま</small><b>Mochi があなた待ち</b><span>PR を出す前に、どこで試しますか?</span></div></div>
-        <div class="note"><span class="app">●</span><div><small>12分前</small><b>Pico の仕事ができました</b><span>通知の受け口を作り直しました。</span></div></div>
-      </div>
+  <figure>
+    <div class="phone wall"><div class="status"><span></span><span>●●●</span></div>
+      <div class="clock">9:41</div><div class="date">11月19日 木曜日</div>
+      <div class="notes" id="notes"></div>
+      <button class="replay" id="replay">もう一度</button>
     </div>
-    <figcaption><b>4. 通知は 2 種類だけ</b><br>「あなた待ち」と「できました」。押すとその会話が開く。</figcaption>
+    <figcaption><b>4. 通知は 2 種類だけ</b><br>「あなた待ち」と「できました」。ファイルの文は出さない。押すとその会話が開く。</figcaption>
   </figure>
 </div>
 
 <script>
 // Dummy data. In kantoku bot this comes from ~/.kantoku/<name>/ through the same JSON as the PC page.
 const BOTS = [
-  { name: "Mochi", color: "#f7a8b8", status: "wait", say: "PR を出す前に見てほしいな",
-    desc: "Web アプリの issue を進めて、PR を出すところまで面倒を見ます。",
-    nots: ["本番への反映", "新しい issue を立てること"],
-    memory: [["main に merge すると自動で本番に出る", "11/12"], ["E2E テストは夜だけ回す決まり", "11/15"]],
-    routines: [["朝の見回り", "平日 8:44"]],
+  { name: "Mochi", color: "#ffb3c7", status: "waiting", say: "PR を出す前に見てほしいな",
+    desc: "Web アプリの issue を進めて、PR を出すところまで面倒を見ます。", nots: ["本番への反映"],
+    memory: [["main に merge すると自動で本番に出る", "11/12"]], routines: [["朝の見回り", "平日 8:44"]],
     talk: [
       { day: "11/18", t: "21:02", from: "bot", text: "検索の並び替え(#128)ができました。検証役も合格です。" },
-      { day: "11/18", t: "21:20", from: "me", text: "ありがとう。初期値は新しい順にしておいて", sent: "届けました" },
-      { day: "11/19", t: "9:40", from: "bot", ask: true, text: "PR を出す前に、どこで試しますか?",
-        choices: [["手元で試す", true], ["ステージングで試す", false], ["試さずに出す", false]] },
+      { day: "11/18", t: "21:20", from: "me", text: "ありがとう。初期値は新しい順に", sent: "届けました" },
+      { day: "11/19", t: "9:40", from: "bot", ask: true, text: "PR を出す前に、どこで試しますか?", choices: [["手元で試す", true], ["ステージングで試す", false], ["試さずに出す", false]] },
     ] },
-  { name: "Pico", color: "#f5d06b", status: "work", say: "テストを直しているところ",
-    desc: "kantoku そのものを良くする係です。", nots: ["LICENSE の変更"],
-    memory: [["push のたびに版の番号を上げる", "11/18"]], routines: [["困りごと探し", "平日 8:44"]],
-    talk: [{ day: "11/19", t: "9:29", from: "bot", text: "通知の受け口を作り直しました。" }] },
-  { name: "Sora", color: "#8ec5f0", status: "sleep", say: "おやすみ中",
-    desc: "共有ドライブの整理を手伝います。", nots: ["ファイルの削除"], memory: [], routines: [],
+  { name: "Pico", color: "#ffd66b", status: "waiting", say: "秘密を 1 つ登録してほしい", secretWait: true,
+    desc: "kantoku そのものを良くする係です。", nots: ["LICENSE の変更"], memory: [], routines: [],
+    talk: [{ day: "11/19", t: "9:20", from: "bot", text: "CI に Vercel の鍵が要ります。" }] },
+  { name: "Kumo", color: "#a8d8ff", status: "working", say: "テストを直しているところ", desc: "データの整理を手伝います。", nots: [], memory: [], routines: [],
+    talk: [{ day: "11/19", t: "9:29", from: "bot", text: "テストの直しを始めました。" }] },
+  { name: "Sora", color: "#c5b8ff", status: "asleep", say: "おやすみ中", desc: "共有ドライブの整理を手伝います。", nots: [], memory: [], routines: [],
     talk: [{ day: "11/16", t: "16:40", from: "bot", text: "棚卸しが終わりました。" }] },
 ];
-const STATUS = { work: "作業中", wait: "あなた待ち", sleep: "おやすみ中" };
-const MOOD = { wait: "smile", work: "focus", sleep: "sleep" };
+const STATUS = { working: "作業中", waiting: "あなた待ち", asleep: "おやすみ中" };
+const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
+const later = (fn, ms) => setTimeout(fn, reduce() ? 0 : ms);
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-const SVG = "http://www.w3.org/2000/svg";
-function svgEl(tag, attrs) { const e = document.createElementNS(SVG, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, a) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); return e; }
 function face(bot, size) {
-  const span = el("span", "face" + (size ? " " + size : ""));
-  span.style.setProperty("--c", bot.color);
+  const span = el("span", "face " + bot.status + (size ? " " + size : "")); span.style.setProperty("--c", bot.color);
   const s = svgEl("svg", { viewBox: "0 0 48 48", "aria-hidden": "true" });
-  const ink = { stroke: "#1f2a33", "stroke-width": "2", fill: "none", "stroke-linecap": "round" };
-  s.append(svgEl("ellipse", { cx: 12, cy: 27, rx: 3, ry: 2, fill: "#fff", opacity: ".5" }), svgEl("ellipse", { cx: 36, cy: 27, rx: 3, ry: 2, fill: "#fff", opacity: ".5" }));
-  const mood = MOOD[bot.status];
-  if (mood === "sleep") s.append(svgEl("path", { d: "M14 21q3 2 6 0M28 21q3 2 6 0", ...ink }));
-  else s.append(svgEl("circle", { cx: 17, cy: 21, r: 2.6, fill: "#1f2a33" }), svgEl("circle", { cx: 31, cy: 21, r: 2.6, fill: "#1f2a33" }));
-  if (mood === "smile") s.append(svgEl("path", { d: "M19 29q5 5 10 0", ...ink }));
-  else if (mood === "focus") s.append(svgEl("path", { d: "M21 30h6", ...ink }));
-  else s.append(svgEl("circle", { cx: 24, cy: 30, r: 1.8, fill: "#1f2a33" }));
-  span.append(s, el("span", "dot " + bot.status));
-  return span;
+  const ink = { stroke: "#1d2433", "stroke-width": "2.2", fill: "none", "stroke-linecap": "round" };
+  s.append(svgEl("ellipse", { cx: 12, cy: 28, rx: 3.2, ry: 2, fill: "#ff8fab", opacity: ".45" }), svgEl("ellipse", { cx: 36, cy: 28, rx: 3.2, ry: 2, fill: "#ff8fab", opacity: ".45" }));
+  if (bot.status === "asleep") s.append(svgEl("path", { d: "M14 21q3 2 6 0M28 21q3 2 6 0", ...ink }));
+  else s.append(svgEl("circle", { cx: 17, cy: 21, r: 2.7, fill: "#1d2433" }), svgEl("circle", { cx: 31, cy: 21, r: 2.7, fill: "#1d2433" }), svgEl("circle", { cx: 18, cy: 20, r: .9, fill: "#fff" }), svgEl("circle", { cx: 32, cy: 20, r: .9, fill: "#fff" }));
+  if (bot.status === "waiting") s.append(svgEl("path", { d: "M19 29q5 5 10 0", ...ink }));
+  else if (bot.status === "working") s.append(svgEl("path", { d: "M21 30h6", ...ink }));
+  else s.append(svgEl("circle", { cx: 24, cy: 30, r: 1.8, fill: "#1d2433" }));
+  span.append(s); return span;
 }
-function stateLabel(b) {
-  const span = el("small", null, STATUS[b.status]);
-  if (b.status === "work") { const t = el("span", "typing"); t.append(el("i"), el("i"), el("i")); span.append(t); }
-  return span;
-}
-function toast(screen, text) { const t = el("div", "toast", text); screen.append(t); setTimeout(() => t.remove(), 2000); }
+function chip(b) { const c = el("span", "chip"); c.append(el("span", "dot " + b.status), STATUS[b.status]); if (b.status === "working") { const t = el("span", "typing"); t.append(el("i"), el("i"), el("i")); c.append(t); } return c; }
+function toast(host, text) { const t = el("div", "toast", text); host.append(t); setTimeout(() => t.remove(), 2100); }
 function now() { const d = new Date(); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); }
+function accordion(title, open, body) {
+  const box = el("div", "acc"); box.dataset.open = open;
+  const head = el("button"); head.append(el("span", null, title), el("span", "chev", "›"));
+  const fold = el("div", "fold" + (open ? "" : " closed")), inner = el("div"), pad = el("div"); pad.append(...body); inner.append(pad); fold.append(inner);
+  head.onclick = () => { const o = box.dataset.open !== "true"; box.dataset.open = o; fold.classList.toggle("closed", !o); };
+  box.append(head, fold); return box;
+}
+function ul(items) { const u = el("ul"); (items.length ? items : [["まだありません", ""]]).forEach(([a, b]) => { const li = el("li", null, a); if (b) li.append(el("small", null, b)); u.append(li); }); return u; }
+
+// A secret card that works on the phone. It leaves a record on the PC and offers to clear the clipboard.
+function secretCard(host, b, onDone) {
+  const m = el("div", "msg"), bub = el("div", "bubble secret");
+  bub.append(el("span", "tag", "🔒 秘密を登録してほしい"), el("span", null, "Vercel token"), el("code", "cmd", "gh secret set VERCEL_TOKEN --repo example-org/web"));
+  const fold = el("div", "fold"), inner = el("div"), form = el("form");
+  const inp = el("input"); inp.type = "password"; inp.placeholder = "値を貼る"; inp.autocomplete = "off"; inp.setAttribute("autocapitalize", "off"); inp.spellcheck = false; inp.setAttribute("aria-label", "秘密の値");
+  const row = el("div", "btn-row"), go = el("button", "btn lockb", "登録"); go.type = "submit"; row.append(go);
+  const warn = el("div", "warn"); warn.append(el("span", null, "⚠"), el("span", null, "スマホのクリップボードは、ほかのアプリやキーボードの履歴に残ることがあります。登録のあと消してください。"));
+  form.append(inp, row, warn); inner.append(form); fold.append(inner); bub.append(fold, el("time", null, "9:21 ・ あと 28 分"));
+  form.onsubmit = e => {
+    e.preventDefault(); if (!inp.value) return; inp.value = ""; fold.classList.add("closed");
+    later(() => {
+      const ok = el("div"); ok.append(el("span", "answered", "✓ 登録しました(exit 0)"), el("p", "pc-only", "PC の会話にも「my phone から登録しました」と残ります。"));
+      const clear = el("button", "btn", "クリップボードを空にする"); clear.style.marginTop = "6px";
+      clear.onclick = () => { navigator.clipboard?.writeText("").catch(() => {}); toast(host, "クリップボードを空にしました"); clear.disabled = true; };
+      ok.append(clear); bub.insertBefore(ok, bub.lastChild); onDone && onDone();
+    }, 420);
+  };
+  m.append(face(b, "s"), bub); return m;
+}
 
 // ---------- phone 1: list → chat → sheet ----------
-const live = document.getElementById("liveScreen");
-let current = null;
-
-function showList() {
-  current = null; live.textContent = "";
-  const bar = el("div", "bar"); bar.append(el("span", "title", "kantoku bot"), el("span", "conn", "● 家の PC"));
-  const ul = el("ul", "list");
-  const order = { wait: 0, work: 1, sleep: 2 };
-  [...BOTS].sort((a, b) => order[a.status] - order[b.status]).forEach(b => {
-    const li = el("li"), btn = el("button", "row");
-    const mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say));
-    btn.append(face(b), mid, b.status === "wait" ? el("span", "pill", "あなた待ち") : el("span"));
-    btn.onclick = () => showChat(b);
-    li.append(btn); ul.append(li);
+const v1 = document.getElementById("v1"), p1 = document.getElementById("p1");
+let filter = "all";
+function listView() {
+  const v = el("div", "view");
+  const top = el("div", "top"), conn = el("span", "conn"); conn.append(el("span", "live"), "家の PC"); top.append(el("h2", null, "Bots"), conn);
+  const seg = el("div", "seg"), thumb = el("span", "thumb"); seg.append(thumb);
+  [["all", "すべて"], ["wait", "あなた待ち"], ["work", "作業中"]].forEach(([f, label], k) => {
+    const btn = el("button", null, label); btn.setAttribute("aria-pressed", f === filter ? "true" : "false");
+    if (f === filter) thumb.style.transform = "translateX(" + k * 100 + "%)";
+    btn.onclick = () => { filter = f; seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === btn ? "true" : "false")); thumb.style.transform = "translateX(" + k * 100 + "%)"; fill(); };
+    seg.append(btn);
   });
-  const foot = el("div", "foot", "この電話は家の PC につないであります");
-  live.append(bar, ul, foot);
+  const list = el("ul", "list");
+  function fill() {
+    list.textContent = "";
+    const order = { waiting: 0, working: 1, asleep: 2 };
+    BOTS.filter(b => filter === "all" || (filter === "wait" ? b.status === "waiting" : b.status === "working")).sort((a, c) => order[a.status] - order[c.status]).forEach((b, k) => {
+      const li = el("li"); li.style.setProperty("--i", k);
+      const row = el("button", "row"), mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say));
+      row.append(face(b), mid, b.secretWait ? el("span", "pill lock", "秘密") : b.status === "waiting" ? el("span", "pill", "あなた待ち") : el("span"));
+      row.onclick = () => open(b); li.append(row); list.append(li);
+    });
+  }
+  fill(); v.append(top, seg, list); return v;
 }
-
-function showChat(b) {
-  current = b; live.textContent = "";
-  const bar = el("div", "bar");
-  const back = el("button", "back", "‹"); back.setAttribute("aria-label", "一覧へ戻る"); back.onclick = showList;
-  const hn = el("button", "head-name"); hn.setAttribute("aria-haspopup", "dialog");
-  const txt = el("span"); txt.append(el("strong", null, b.name), stateLabel(b));
-  hn.append(face(b, "s"), txt); hn.onclick = () => openSheet(true);
+function chatView(b) {
+  const v = el("div", "view ahead");
+  const bar = el("div", "bar"), back = el("button", "back", "‹"); back.setAttribute("aria-label", "一覧へ戻る"); back.onclick = close;
+  const hn = el("button", "head-name"), txt = el("span"); txt.append(el("strong", null, b.name), chip(b)); hn.append(face(b, "s"), txt); hn.onclick = () => sheet(true);
   bar.append(back, hn);
-
-  const chat = el("section", "chat"); chat.setAttribute("aria-live", "polite");
-  let day = "";
-  b.talk.forEach(item => {
+  const chat = el("section", "chat"); let day = "";
+  b.talk.forEach((item, k) => {
     if (item.day !== day) { chat.append(el("div", "day", item.day)); day = item.day; }
-    if (item.from === "me") {
-      const m = el("div", "msg mine"), bub = el("div", "bubble");
-      bub.append(el("span", null, item.text), el("time", null, item.t + " ・ " + item.sent));
-      m.append(bub); chat.append(m); return;
-    }
-    const m = el("div", "msg"), bub = el("div", "bubble" + (item.ask ? " ask" : ""));
-    if (item.ask) bub.append(el("span", "tag", "あなたに聞きたいこと"));
+    if (item.from === "me") { const m = el("div", "msg mine"), bub = el("div", "bubble"); m.style.setProperty("--i", k); bub.append(el("span", null, item.text), el("time", null, item.t + " ・ " + item.sent)); m.append(bub); chat.append(m); return; }
+    const m = el("div", "msg"); m.style.setProperty("--i", k);
+    const bub = el("div", "bubble" + (item.ask ? " ask" : ""));
+    if (item.ask) bub.append(el("span", "tag", "✦ あなたに聞きたいこと"));
     bub.append(el("span", null, item.text));
-    if (item.ask && !item.answered) {
-      const col = el("div", "choices");
-      item.choices.forEach(([label, rec]) => {
-        const c = el("button", "choice" + (rec ? " rec" : ""), label + (rec ? "(おすすめ)" : ""));
-        c.onclick = () => answer(b, item, label); col.append(c);
-      });
-      const own = el("button", "choice", "自分で書く");
-      own.onclick = () => { const t = live.querySelector("textarea"); t.placeholder = "答えを書く…"; t.dataset.answer = "1"; t.focus(); };
-      col.append(own); bub.append(col);
+    if (item.ask) {
+      const fold = el("div", "fold" + (item.answered ? " closed" : "")), inner = el("div"), col = el("div", "choices");
+      item.choices.forEach(([label, rec]) => { const c = el("button", "choice" + (rec ? " rec" : ""), label + (rec ? " ★" : ""));
+        c.onclick = () => { item.answered = label; fold.classList.add("closed"); later(() => { b.talk.push({ day: "11/19", t: now(), from: "me", text: label, sent: "届けました" }); b.status = "working"; b.say = "続きから作業中"; reopen(b); toast(p1, "答えを " + b.name + " に届けました"); }, 420); };
+        col.append(c); });
+      col.append(el("button", "choice", "自分で書く")); inner.append(col); fold.append(inner); bub.append(fold);
+      if (item.answered) bub.append(el("span", "answered", "✓ 答えた: " + item.answered));
     }
-    if (item.ask && item.answered) bub.append(el("div", "answered", "答えた: " + item.answered));
-    bub.append(el("time", null, item.t));
-    m.append(face(b, "s"), bub); chat.append(m);
+    bub.append(el("time", null, item.t)); m.append(face(b, "s"), bub); chat.append(m);
   });
-
-  const form = el("form", "composer");
-  const ta = el("textarea"); ta.rows = 1; ta.placeholder = b.name + " に話しかける…"; ta.setAttribute("aria-label", "メッセージ");
+  if (b.secretWait) chat.append(secretCard(p1, b, () => { b.secretWait = false; b.status = "working"; b.say = "続きから作業中"; }));
+  const form = el("form", "composer"), ta = el("textarea"); ta.rows = 1; ta.placeholder = b.name + " に話しかける…"; ta.setAttribute("aria-label", "メッセージ");
   const send = el("button", "send", "↑"); send.type = "submit"; send.disabled = true; send.setAttribute("aria-label", "送る");
   ta.oninput = () => { send.disabled = !ta.value.trim(); ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
-  form.onsubmit = e => {
-    e.preventDefault();
-    const text = ta.value.trim(); if (!text) return;
-    const ask = b.talk.find(x => x.ask && !x.answered);
-    if (ta.dataset.answer && ask) return answer(b, ask, text);
-    const asleep = b.status === "sleep";
-    b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: asleep ? "起きたら読みます" : "届けました" });
-    showChat(b); toast(live, asleep ? "起きたら読みます" : "届けました");
-  };
+  form.onsubmit = e => { e.preventDefault(); const text = ta.value.trim(); if (!text) return; const asleep = b.status === "asleep";
+    b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: asleep ? "起きたら読みます" : "届けました" }); reopen(b); toast(p1, asleep ? "起きたら読みます" : "届けました"); };
   form.append(ta, send);
-
-  const scrim = el("div", "scrim"), sheet = el("aside", "sheet");
-  sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", b.name + " の情報");
-  scrim.onclick = () => openSheet(false);
-  fillSheet(sheet, b);
-  live.append(bar, chat, form, scrim, sheet);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function fillSheet(sheet, b) {
-  sheet.append(el("div", "grab"));
-  const top = el("div", "sheet-top"); top.append(face(b, "big"), el("h2", null, b.name)); sheet.append(top);
+  const scrim = el("div", "scrim"), sh = el("div", "sheet"); sh.setAttribute("role", "dialog"); sh.setAttribute("aria-label", b.name + " の情報"); scrim.onclick = () => sheet(false);
+  const st = el("div", "sheet-top"); st.append(face(b, "xl"), el("h3", null, b.name), chip(b));
   const body = el("div", "sheet-body");
-  const d = el("div", "sec"); d.append(el("h3", null, "説明"), el("p", null, b.desc), el("p", "pc-only", "やらないこと: " + b.nots.join("、")));
-  const m = el("div", "sec"); m.append(el("h3", null, "覚えていること"));
-  const mu = el("ul"); (b.memory.length ? b.memory : [["まだありません", ""]]).forEach(([f, w]) => { const li = el("li", null, f); if (w) li.append(el("small", null, w + " に覚えた")); mu.append(li); }); m.append(mu);
-  const r = el("div", "sec"); r.append(el("h3", null, "ルーティン"));
-  const ru = el("ul"); (b.routines.length ? b.routines : [["まだありません", ""]]).forEach(([n, w]) => { const li = el("li", null, n); if (w) li.append(el("small", null, w)); ru.append(li); }); r.append(ru);
-  body.append(d, m, r, el("p", "pc-only", "説明・覚えていることを直すのは PC の画面で。"));
-  sheet.append(body);
+  body.append(accordion("説明", true, [el("span", null, b.desc), el("p", "pc-only", "やらないこと: " + (b.nots.join("、") || "なし"))]),
+    accordion("覚えていること", false, [ul(b.memory.map(([f, d]) => [f, d + " に覚えた"]))]),
+    accordion("ルーティン", false, [ul(b.routines)]), el("p", "pc-only", "説明・覚えていることを直すのは PC の画面で。"));
+  sh.append(el("div", "grab"), st, body);
+  v.append(bar, chat, form, scrim, sh);
+  requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+  return v;
 }
-function openSheet(on) { live.querySelector(".sheet").classList.toggle("open", on); live.querySelector(".scrim").classList.toggle("open", on); }
+let list1 = listView(), chat1 = null;
+v1.append(list1);
+function open(b) { chat1 = chatView(b); v1.append(chat1); requestAnimationFrame(() => requestAnimationFrame(() => { chat1.classList.remove("ahead"); list1.classList.add("behind"); })); }
+function close() { const c = chat1; c.classList.add("ahead"); const fresh = listView(); fresh.classList.add("behind"); list1.replaceWith(fresh); list1 = fresh;
+  requestAnimationFrame(() => list1.classList.remove("behind")); later(() => c.remove(), 500); }
+function reopen(b) { const c = chatView(b); c.classList.remove("ahead"); chat1.replaceWith(c); chat1 = c; }
+function sheet(on) { chat1.querySelector(".sheet").classList.toggle("open", on); chat1.querySelector(".scrim").classList.toggle("open", on); }
+document.addEventListener("keydown", e => { if (e.key === "Escape" && chat1) sheet(false); });
 
-function answer(b, item, label) {
-  item.answered = label;
-  b.talk.push({ day: "11/19", t: now(), from: "me", text: label, sent: "届けました" });
-  if (!b.talk.some(x => x.ask && !x.answered)) { b.status = "work"; b.say = "続きから作業中"; }
-  showChat(b); toast(live, "答えを " + b.name + " に届けました");
-}
-document.addEventListener("keydown", e => { if (e.key === "Escape" && current) openSheet(false); });
-showList();
-
-// ---------- phone 2: secret card, PC only ----------
+// ---------- phone 2: secret card on the phone ----------
 (function () {
-  const scr = document.getElementById("secretScreen"), b = { ...BOTS[1], status: "wait" };
-  const bar = el("div", "bar"), back = el("button", "back", "‹"); back.setAttribute("aria-label", "一覧へ戻る");
-  const hn = el("button", "head-name"), txt = el("span"); txt.append(el("strong", null, b.name), stateLabel(b)); hn.append(face(b, "s"), txt);
-  bar.append(back, hn);
-  const chat = el("section", "chat");
-  chat.append(el("div", "day", "11/19"));
-  const m = el("div", "msg"), bub = el("div", "bubble secret");
-  bub.append(el("span", "tag", "秘密を登録してほしい"), el("span", null, "Vercel token"));
-  bub.append(el("code", "cmd", "gh secret set VERCEL_TOKEN --repo example-org/web"));
-  const line = el("div", "lockline"); line.append(el("span", null, "🔒"), el("span", null, "秘密の値は PC の kantoku bot でだけ入れられます。帰ったら PC で開いてください。"));
-  bub.append(line, el("time", null, "9:35 ・ あと 25 分"));
-  m.append(face(b, "s"), bub); chat.append(m);
-  const form = el("form", "composer"), ta = el("textarea"); ta.rows = 1; ta.placeholder = b.name + " に話しかける…"; ta.setAttribute("aria-label", "メッセージ");
-  const send = el("button", "send", "↑"); send.disabled = true; send.setAttribute("aria-label", "送る"); form.append(ta, send);
-  form.onsubmit = e => e.preventDefault();
-  scr.append(bar, chat, form);
+  const v2 = document.getElementById("v2"), b = { ...BOTS[1] }, v = el("div", "view");
+  const bar = el("div", "bar"), back = el("button", "back", "‹"), hn = el("button", "head-name"), txt = el("span");
+  txt.append(el("strong", null, b.name), chip(b)); hn.append(face(b, "s"), txt); bar.append(back, hn);
+  const chat = el("section", "chat"); chat.append(el("div", "day", "11/19"));
+  const m = el("div", "msg"), bub = el("div", "bubble"); bub.append(el("span", null, "CI に Vercel の鍵が要ります。カードを出しました。"), el("time", null, "9:20")); m.append(face(b, "s"), bub);
+  chat.append(m, secretCard(v2.parentElement, b));
+  v.append(bar, chat); v2.append(v);
 })();
-document.getElementById("pairFace").append(face(BOTS[0], "big"));
+
+// ---------- phone 3: pairing ----------
+(function () {
+  const v3 = document.getElementById("v3"), v = el("div", "view"), c = el("div", "center");
+  const code = el("div", "code"); code.setAttribute("aria-label", "6 けたの数字");
+  const boxes = [...Array(6)].map((_, i) => { const x = el("input"); x.inputMode = "numeric"; x.maxLength = 1; x.value = "482913"[i] || ""; if (i > 3) x.value = "";
+    x.oninput = () => { if (x.value && boxes[i + 1]) boxes[i + 1].focus(); }; code.append(x); return x; });
+  const notice = el("div", "notice"); notice.append(el("span", null, "⚠"), el("span", null, "つないだ電話は、あなたとして答え・話しかけ・秘密の登録までできます。なくしたら PC の「つないだ電話」で外してください。"));
+  const go = el("button", "btn primary", "つなぐ");
+  go.onclick = () => { c.textContent = ""; const mark = el("div", "done-mark", "✓"); c.append(mark, el("h3", null, "つながりました"), el("p", null, "この電話の名前: my phone"), el("p", null, "PC の「つないだ電話」に出ています。")); };
+  c.append(face(BOTS[0], "xl"), el("h3", null, "この電話をつなぐ"), el("p", null, "PC の kantoku bot で「電話をつなぐ」を押すと、6 けたの数字が出ます。10 分だけ使えます。"), code, notice, go);
+  v.append(c); v3.append(v);
+})();
+
+// ---------- phone 4: lock screen ----------
+function notes() {
+  const n = document.getElementById("notes"); n.textContent = "";
+  [[BOTS[0], "いま", "Mochi があなた待ち", "開いて答えてください"], [BOTS[2], "12分前", "Kumo の仕事ができました", "開いて見てください"]].forEach(([b, t, title, body], i) => {
+    const d = el("div", "note"); d.style.setProperty("--i", i); const tx = el("div"); tx.append(el("small", null, t), el("b", null, title), el("span", null, body)); d.append(face({ ...b, status: "waiting" }, "s"), tx); n.append(d);
+  });
+}
+notes(); document.getElementById("replay").onclick = notes;
+
+document.getElementById("motion").onclick = e => { const off = document.documentElement.dataset.motion !== "off"; document.documentElement.dataset.motion = off ? "off" : "on"; e.target.textContent = off ? "動きをもどす" : "動きを止める"; };
+document.getElementById("theme").onclick = () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; };
 </script>
 </body>
 </html>
