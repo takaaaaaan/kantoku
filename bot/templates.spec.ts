@@ -59,6 +59,7 @@ test('SKILL.md carries the peer manager rules', () => {
     'Compare `from` with `terminal:` in `~/.kantoku/<sender>/state.md`.',
     'no_active_sender_terminal',
     'write that manager the letter `<name>: ready`',
+    'orca project setup-delete --setup <that id> --force --json',
     'dispatch_run_mismatch',
     'worker-release --dispatch <verifier dispatch ID>',
   ])

@@ -17,7 +17,7 @@ What the manager may use itself (everything else is a child's job):
 - `orca orchestration *` / `orca repo list` / `orca worktree list` (dispatch, watch, answer)
 - `orca terminal rename` / `orca chat rename` (only to name its own tab "<name>くん")
 - Reading and writing files inside `<home>` (state / decisions / specs / profile)
-- Peer managers ("7. Peer managers"): writing a new manager's `profile.md`, reading other managers' `state.md`, `orca repo add --kind folder` / `orca worktree set --display-name` / `orca worktree rm` on a manager's home folder, `orca agent launch` to start one, `orca terminal show` / `orca terminal close` on a manager's `terminal:`
+- Peer managers ("7. Peer managers"): writing a new manager's `profile.md`, reading other managers' `state.md`, `orca repo add --kind folder` / `orca worktree set --display-name` / `orca project setup-delete` on a manager's home folder, `orca agent launch` to start one, `orca terminal show` / `orca terminal close` on a manager's `terminal:`
 - `orca worktree rm` for a verifier's worktree only ("1.5 Verifier")
 - **Scouting only**, to write a spec: read-only commands such as `gh issue view` / `gh pr view`, a few times per task at most. A child does root-cause research and code reading
 - **Checking the current state of a PR only**: `gh pr view` / `gh pr checks` (before a report, and when a verifier result arrives)
@@ -392,7 +392,11 @@ orca orchestration send --to run:<their Run ID> --type status --subject "<your n
 ### Closing one
 
 - `orca terminal close --terminal <its terminal:>` closes its tab. Its Run, its workspace, and `~/.kantoku/<name>/` stay, so `orca agent launch` into its workspace with `/kantoku:kantoku <name>` brings it back where it left off.
-- When it is done for good, also remove its workspace: `orca worktree rm --worktree path:<path>`. Orca forgets the workspace; the folder stays on disk.
+- When it is done for good, also remove its workspace. It is a folder project, so `worktree rm` refuses it; remove the project instead. Orca forgets it, and the folder stays on disk:
+  ```text
+  orca repo show --repo path:<path> --json            # result.repo.id
+  orca project setup-delete --setup <that id> --force --json
+  ```
 - Close a manager only when the user asks, or when you made it and its duties are finished. Deleting its `~/.kantoku/<name>/` is data deletion, so it is always C.
 
 ## Never do these
