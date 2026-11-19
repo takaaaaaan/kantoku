@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { orcaRing, retryQueued } from './doorbell.ts'
-import { startBotServer } from './server.ts'
+import { expireSecrets, startBotServer } from './server.ts'
 
 export const DEFAULT_PORT = 4870
 const RETRY_MS = 30_000
@@ -49,8 +49,12 @@ async function main(): Promise<void> {
     else console.error((error as Error).message)
     process.exit(1)
   }
-  // Entries written while a manager had no Run, or whose doorbell failed.
-  setInterval(() => void retryQueued(args.root, orcaRing).catch(() => 0), RETRY_MS)
+  // Entries written while a manager had no Run, or whose doorbell failed; and
+  // secret requests whose time ran out.
+  setInterval(() => {
+    void retryQueued(args.root, orcaRing).catch(() => 0)
+    void expireSecrets(args.root, orcaRing).catch(() => 0)
+  }, RETRY_MS)
   console.log(`kantoku bot: http://127.0.0.1:${args.port}/`)
   console.log('Ctrl+C to stop')
 }

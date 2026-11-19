@@ -18,6 +18,12 @@ const LABELS = {
     toastSent: name => `${name} に届けました`, toastQueued: name => `${name} は眠っています。起きたら読みます`,
     saved: '保存しました', forgot: '消しました(控えは残してあります)', failed: '送れませんでした。もう一度どうぞ',
     gear: '説明を編集', close: '閉じる', noTalk: 'まだ会話がありません',
+    secretTag: '秘密の入力', secretRuns: '「登録」を押すと、このコマンドだけを動かします',
+    secretNote: '値はこのコマンドの標準入力にだけ渡します。保存せず、マネージャーにも子にも見せません。',
+    secretField: '値を貼る', secretSend: '登録', secretLeft: m => `残り ${m} 分`,
+    secretDone: '登録済み', secretExpired: '期限が切れました', secretRefused: 'このお願いは受け付けられません: ',
+    secretFailed: (exit, note) => `失敗しました (exit ${exit ?? '-'})${note ? `: ${note}` : ''}。もう一度貼れます`,
+    secretOk: '登録しました',
   },
   en: {
     waiting: 'waiting for you', working: 'working', asleep: 'asleep', info: '▸ info',
@@ -34,6 +40,12 @@ const LABELS = {
     toastSent: name => `Delivered to ${name}`, toastQueued: name => `${name} is asleep and will read it on waking`,
     saved: 'Saved', forgot: 'Forgotten (a backup is kept)', failed: 'Could not send. Please try again',
     gear: 'Edit description', close: 'Close', noTalk: 'No conversation yet',
+    secretTag: 'Secret input', secretRuns: 'Register runs exactly this command',
+    secretNote: "The value goes only to this command's standard input. It is not saved, and the manager and children never see it.",
+    secretField: 'Paste the value', secretSend: 'Register', secretLeft: m => `${m} min left`,
+    secretDone: 'Registered', secretExpired: 'This request expired', secretRefused: 'This request is not allowed: ',
+    secretFailed: (exit, note) => `Failed (exit ${exit ?? '-'})${note ? `: ${note}` : ''}. You can paste again`,
+    secretOk: 'Registered',
   },
 }
 
@@ -52,6 +64,9 @@ let selected = remembered()
 let editing = false
 let fixing = null // memory id being fixed
 let answering = null // ask id being answered in the composer
+// Secret fields live across re-renders, so a refresh never drops what is being pasted.
+const secretFields = new Map() // `${bot}/${request}` → <input>
+const secretNotes = new Map() // `${bot}/${request}` → last stderr line, in memory only
 
 // ---------- small helpers ----------
 
@@ -259,7 +274,7 @@ function renderChat() {
       chat.append(el('div', 'day', d))
       day = d
     }
-    chat.append(item.kind === 'mine' ? mineBubble(item, l) : botBubble(b, item, l))
+    chat.append(item.kind === 'mine' ? mineBubble(item, l) : item.kind === 'secret' ? secretCard(b, item, l) : botBubble(b, item, l))
   }
   if (stick) scrollChat(true)
 }
@@ -296,6 +311,70 @@ function botBubble(b, item, l) {
   msg.append(face(b), bubble)
   return msg
 }
+
+function minutesLeft(expires) {
+  return Math.max(0, Math.ceil((Date.parse(expires) - Date.now()) / 60_000))
+}
+
+// A secret request: the whole command, a password field, and Register.
+function secretCard(b, item, l) {
+  const msg = el('div', 'msg')
+  const bubble = el('div', 'bubble secret')
+  bubble.append(el('span', 'tag', l.secretTag), el('strong', null, item.label))
+  if (item.description) bubble.append(textWithLinks(item.description))
+  const key = `${b.name}/${item.id}`
+  if (item.state === 'refused') {
+    bubble.append(el('p', 'error', l.secretRefused + (item.reason ?? '')))
+  } else {
+    bubble.append(el('div', 'secret-runs', l.secretRuns), el('code', 'secret-cmd', item.command))
+  }
+  if (item.state === 'done') bubble.append(el('div', 'answered', l.secretDone))
+  if (item.state === 'expired') bubble.append(el('div', 'answered', l.secretExpired))
+  if (item.state === 'open') {
+    if (item.exit !== undefined) bubble.append(el('p', 'error', l.secretFailed(item.exit, secretNotes.get(key))))
+    let input = secretFields.get(key)
+    if (!input) {
+      input = el('input', 'secret-field')
+      input.type = 'password'
+      input.setAttribute('autocomplete', 'off')
+      input.spellcheck = false
+      input.maxLength = 8192
+      secretFields.set(key, input)
+    }
+    input.setAttribute('aria-label', l.secretField)
+    input.placeholder = l.secretField
+    const send = el('button', 'btn primary', l.secretSend)
+    send.type = 'submit'
+    const form = el('form', 'secret-row')
+    form.addEventListener('submit', async event => {
+      event.preventDefault()
+      const value = input.value
+      if (value === '') return
+      input.value = ''
+      send.disabled = true
+      const res = await post('/api/secret', { bot: b.name, request: item.id, command: item.command, value })
+      send.disabled = false
+      if (res.status === 200 && res.json.exit === 0) {
+        secretFields.delete(key)
+        secretNotes.delete(key)
+        toast(l.secretOk)
+      } else if (res.status === 200) {
+        if (res.json.note) secretNotes.set(key, res.json.note)
+        else secretNotes.delete(key)
+      } else toast(res.json.error ?? l.failed)
+      await load(true)
+    })
+    form.append(input, send)
+    bubble.append(form, el('p', 'note', l.secretNote))
+    const left = el('div', 'secret-left', l.secretLeft(minutesLeft(item.expires)))
+    left.dataset.expires = item.expires
+    bubble.append(left)
+  }
+  bubble.append(el('time', null, timeOf(item.at)))
+  msg.append(face(b), bubble)
+  return msg
+}
+// end secretCard
 
 function renderSheet() {
   const b = bot()
@@ -576,6 +655,14 @@ scrollChat(true)
 setInterval(() => {
   if (document.visibilityState === 'visible') void load(false)
 }, REFRESH_MS)
+// The time left on open secret cards; a card that runs out re-renders from the server.
+setInterval(() => {
+  for (const node of document.querySelectorAll('.secret-left')) {
+    const minutes = minutesLeft(node.dataset.expires)
+    if (minutes === 0) void load(true)
+    else node.textContent = L().secretLeft(minutes)
+  }
+}, 30_000)
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') void load(false)
 })

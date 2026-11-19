@@ -35,3 +35,15 @@ test('splitLinks makes links only for http and https', () => {
   assert.deepEqual(splitLinks(''), [])
   assert.deepEqual(splitLinks('[x](HTTPS://h/"onmouseover=1)'), [{ text: '[x](HTTPS://h/"onmouseover=1)' }])
 })
+
+test('the secret field is a password field that is emptied before the value is sent, and the value is never stored', () => {
+  const js = page('bot.js')
+  const card = js.slice(js.indexOf('function secretCard'), js.indexOf('// end secretCard'))
+  assert.match(card, /input\.type = 'password'/)
+  assert.match(card, /setAttribute\('autocomplete', 'off'\)/)
+  assert.match(card, /input\.spellcheck = false/)
+  const cleared = card.indexOf("input.value = ''")
+  const sent = card.indexOf("post('/api/secret'")
+  assert.ok(cleared > 0 && sent > cleared, 'cleared before the request')
+  assert.doesNotMatch(card, /localStorage|sessionStorage|location|console\./)
+})

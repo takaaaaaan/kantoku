@@ -157,3 +157,12 @@ button, textarea, input { font: inherit; color: inherit; }
 @media (max-width: 720px) {
   .bot-row > div { min-width: max-content; }
 }
+
+/* ---------- secret input card ---------- */
+.bubble.secret { border: 1px solid var(--wait); display: grid; gap: 6px; }
+.secret-runs { color: var(--muted); font-size: 12.5px; }
+.secret-cmd { font-family: var(--mono); font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; overflow-wrap: anywhere; }
+.secret-row { display: flex; gap: 8px; }
+.secret-field { flex: 1; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); }
+.secret-left { color: var(--muted); font-size: 12px; }
+.bubble.secret .error { color: var(--danger); font-size: 12px; }
