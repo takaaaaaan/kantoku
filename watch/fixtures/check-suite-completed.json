@@ -1,0 +1,16 @@
+{
+  "action": "completed",
+  "check_suite": {
+    "id": 301,
+    "head_sha": "1a2b3c4d5e6f",
+    "status": "completed",
+    "conclusion": "failure"
+  },
+  "repository": {
+    "full_name": "Owner/Repo",
+    "name": "Repo",
+    "owner": {
+      "login": "Owner"
+    }
+  }
+}

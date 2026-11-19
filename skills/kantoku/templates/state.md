@@ -5,9 +5,10 @@
      Keep the `## Tasks` and `## Queue` headings and the Status column: the manager panel (the kantoku mod beside the chat) reads them. -->
 
 ## Tasks
-<!-- One row per task. Status starts with a short word: "in progress", "waiting for verifier", "done", "merged". -->
-| Task | Child worktree | dispatch ID | Status | Pending gate |
-|---|---|---|---|---|
+<!-- One row per task. Status starts with a short word: "in progress", "waiting for verifier", "done", "merged".
+     PR: the URL of the PR this child owns, once it exists. Only the owner's row has it (a verifier's row does not). kantoku-watch sends this PR's events to the row's dispatch ID. -->
+| Task | Child worktree | dispatch ID | PR | Status | Pending gate |
+|---|---|---|---|---|---|
 
 ## Queue
 <!-- Tasks not dispatched yet, one bullet each. -->

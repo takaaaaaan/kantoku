@@ -25,7 +25,7 @@
 - merge: after-verifier <!-- after-verifier | never. If the repo rules say "agents do not merge", use never -->
 
 ## Always-ask list
-<!-- On top of "Always C" in SKILL.md, the operations this work always asks a human about. Example: releasing to production, changing permissions, filing a new issue -->
+<!-- On top of "Always C" in SKILL.md, the operations this work always asks a human about. Example: releasing to production, changing permissions, filing a new issue, forwarding webhooks with kantoku-watch on a repo the user does not own -->
 
 ## Browser accounts (used with claude-in-chrome)
 <!-- For each site, which Chrome profile and which account to operate with. Unknown cells may stay empty (the manager checks and fills them in the first time) -->
@@ -39,6 +39,7 @@
 |---|---|---|
 | (Example) chat #requests channel | Config change requests | Put in the queue |
 | (Example) GitHub Actions | CI failure notices | Put in the queue (dispatch a child to find the cause) |
+| kantoku-watch | CI, review, comment, merge notices | Not a task. The owner child already got the details; check `gh pr view` before acting on the summary |
 
 ## Language
 <!-- Example: chat in Japanese. Commit messages and PRs in English -->

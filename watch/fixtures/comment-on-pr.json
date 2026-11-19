@@ -1,0 +1,25 @@
+{
+  "action": "created",
+  "issue": {
+    "number": 12,
+    "pull_request": {
+      "url": "https://api.github.com/repos/Owner/Repo/pulls/12"
+    }
+  },
+  "comment": {
+    "id": 201,
+    "body": "Can you add a test?",
+    "html_url": "https://github.com/Owner/Repo/pull/12#issuecomment-201",
+    "user": {
+      "login": "commenter-login",
+      "type": "User"
+    }
+  },
+  "repository": {
+    "full_name": "Owner/Repo",
+    "name": "Repo",
+    "owner": {
+      "login": "Owner"
+    }
+  }
+}
