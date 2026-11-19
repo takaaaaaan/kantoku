@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>kantoku bot mobile</title>
+<!-- Mockup only. All data below is made up. No external loads. Nothing is sent anywhere.
+     Shows kantoku bot on a phone: the bot list, one conversation with a question card,
+     the info sheet, a secret card that only works on the PC, pairing, and notifications. -->
+<style>
+:root {
+  --bg: #f2f5f7;
+  --panel: #ffffff;
+  --ink: #1f2a33;
+  --muted: #6b7a86;
+  --line: #e3e9ee;
+  --select: #e9f1f7;
+  --wait: #e8742a;
+  --wait-soft: #fff1e6;
+  --work: #3aa676;
+  --bubble: #ffffff;
+  --mine: #dceefb;
+  --lock: #7a6bd1;
+  --lock-soft: #f0edff;
+  --shadow: 0 1px 2px rgba(31, 42, 51, .06), 0 4px 16px rgba(31, 42, 51, .06);
+  --font: "Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 18px;
+  --stage: #dfe5ea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
+    --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
+    --mine: #1f3446; --lock: #a79bf0; --lock-soft: #2a2640; --shadow: 0 1px 2px rgba(0,0,0,.3);
+    --stage: #0d1013; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181d; --panel: #1b2027; --ink: #e8edf2; --muted: #93a1ad; --line: #2a313a;
+  --select: #232b35; --wait: #ff9a57; --wait-soft: #3a2a1f; --work: #52c08f; --bubble: #222932;
+  --mine: #1f3446; --lock: #a79bf0; --lock-soft: #2a2640; --shadow: 0 1px 2px rgba(0,0,0,.3);
+  --stage: #0d1013; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--stage); color: var(--ink); font: 14px/1.6 var(--font); }
+button, textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+
+/* ---------- review page around the phones (not part of the app) ---------- */
+.intro { max-width: 1100px; margin: 0 auto; padding: 24px 16px 8px; }
+.intro h1 { font-size: 20px; margin: 0 0 4px; }
+.intro p { margin: 0; color: var(--muted); font-size: 13px; }
+.stage { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; padding: 20px 16px 48px; }
+.shot { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.shot figcaption { font-size: 12.5px; color: var(--muted); max-width: 300px; text-align: center; }
+.shot figcaption b { color: var(--ink); }
+figure { margin: 0; }
+
+/* ---------- the phone ---------- */
+.phone { width: 300px; height: 620px; border-radius: 40px; background: var(--bg); position: relative; overflow: hidden;
+  box-shadow: 0 0 0 10px #10151a, 0 18px 40px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.notch { height: 30px; flex: none; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; font-size: 11px; font-weight: 700; background: var(--panel); }
+.screen { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+
+/* ---------- top bar ---------- */
+.bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 52px; }
+.bar .title { font-weight: 700; font-size: 16px; flex: 1; }
+.back { border: 0; background: none; font-size: 20px; padding: 2px 6px; border-radius: 10px; cursor: pointer; }
+.back:hover { background: var(--select); }
+.head-name { border: 0; background: none; display: flex; align-items: center; gap: 8px; padding: 2px 8px 2px 2px; border-radius: 99px; cursor: pointer; min-width: 0; flex: 1; text-align: left; }
+.head-name:hover { background: var(--select); }
+.head-name strong { display: block; font-size: 15px; line-height: 1.2; }
+.head-name small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.2; }
+.conn { font-size: 10.5px; color: var(--muted); background: var(--select); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+
+/* ---------- face ---------- */
+.face { position: relative; width: 44px; height: 44px; border-radius: 50%; background: var(--c); flex: none; }
+.face.s { width: 34px; height: 34px; }
+.face.big { width: 64px; height: 64px; }
+.face svg { width: 100%; height: 100%; display: block; }
+.face .dot { position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 50%; border: 3px solid var(--panel); background: var(--muted); }
+.face .dot.work { background: var(--work); }
+.face .dot.wait { background: var(--wait); }
+
+/* ---------- list ---------- */
+.list { list-style: none; margin: 0; padding: 6px 8px; overflow-y: auto; flex: 1; }
+.row { width: 100%; display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 10px 8px; border: 0; background: none; border-radius: 14px; text-align: left; cursor: pointer; min-height: 64px; }
+.row:hover { background: var(--select); }
+.row > div { min-width: 0; }
+.row .name { font-weight: 700; }
+.row .say { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { background: var(--wait); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.section-label { font-size: 11px; color: var(--muted); padding: 10px 14px 2px; letter-spacing: .04em; }
+.foot { padding: 10px 14px 16px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); background: var(--panel); display: flex; gap: 6px; align-items: center; }
+
+/* ---------- chat ---------- */
+.chat { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.day { align-self: center; color: var(--muted); font-size: 11px; background: var(--panel); padding: 1px 10px; border-radius: 99px; border: 1px solid var(--line); }
+.msg { display: grid; grid-template-columns: 34px 1fr; gap: 8px; max-width: 100%; }
+.msg.mine { grid-template-columns: 1fr; align-self: flex-end; max-width: 85%; }
+.bubble { background: var(--bubble); border-radius: 4px var(--r) var(--r) var(--r); padding: 9px 12px; box-shadow: var(--shadow); min-width: 0; overflow-wrap: anywhere; }
+.mine .bubble { background: var(--mine); border-radius: var(--r) 4px var(--r) var(--r); }
+.bubble time { display: block; color: var(--muted); font-size: 10.5px; margin-top: 3px; }
+.bubble.ask { background: var(--wait-soft); }
+.bubble.secret { background: var(--lock-soft); }
+.tag { display: block; font-size: 11px; font-weight: 700; color: var(--wait); }
+.secret .tag { color: var(--lock); }
+/* Choices stack full-width on a phone: big thumb targets, recommended first. */
+.choices { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.choice { border: 1.5px solid var(--wait); background: var(--panel); border-radius: 14px; padding: 10px 14px; cursor: pointer; text-align: left; min-height: 44px; }
+.choice.rec { background: var(--wait); color: #fff; font-weight: 700; }
+.answered { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.cmd { display: block; font-family: var(--mono); font-size: 11.5px; background: var(--panel); border-radius: 8px; padding: 6px 8px; margin: 8px 0 6px; overflow-wrap: anywhere; }
+.lockline { display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; color: var(--ink); }
+
+.composer { display: flex; gap: 8px; align-items: flex-end; padding: 8px 10px 14px; background: var(--panel); border-top: 1px solid var(--line); }
+.composer textarea { flex: 1; min-width: 0; resize: none; border: 1.5px solid var(--line); border-radius: 18px; padding: 9px 12px; background: var(--bg); min-height: 42px; max-height: 120px; font-size: 16px; }
+.composer textarea:focus { border-color: var(--wait); outline: none; }
+.send { border: 0; background: var(--wait); color: #fff; font-weight: 700; border-radius: 50%; width: 42px; height: 42px; cursor: pointer; flex: none; font-size: 18px; }
+.send:disabled { opacity: .45; cursor: default; }
+
+/* ---------- bottom sheet (info) ---------- */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.25); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 4; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 82%; background: var(--panel); border-radius: 22px 22px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,.15);
+  transform: translateY(105%); transition: transform .22s ease; z-index: 5; display: flex; flex-direction: column; }
+.sheet.open { transform: none; }
+.grab { width: 40px; height: 5px; border-radius: 99px; background: var(--line); margin: 8px auto 0; flex: none; }
+.sheet-top { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px 10px; text-align: center; }
+.sheet-top h2 { margin: 2px 0 0; font-size: 17px; }
+.sheet-body { overflow-y: auto; padding: 0 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+.sec h3 { margin: 0 0 6px; font-size: 11.5px; color: var(--muted); letter-spacing: .06em; }
+.sec p { margin: 0; }
+.sec ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sec li { background: var(--bg); border-radius: 12px; padding: 8px 12px; font-size: 13px; }
+.sec li small { display: block; color: var(--muted); font-size: 11px; }
+.pc-only { font-size: 11.5px; color: var(--muted); }
+
+/* ---------- pairing / notifications ---------- */
+.center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
+.center h2 { margin: 0; font-size: 18px; }
+.center p { margin: 0; color: var(--muted); font-size: 13px; }
+.code { display: flex; gap: 6px; }
+.code input { width: 34px; height: 44px; text-align: center; font-size: 20px; font-weight: 700; border: 1.5px solid var(--line); border-radius: 10px; background: var(--panel); }
+.btn { border: 1.5px solid var(--line); background: var(--panel); border-radius: 99px; padding: 10px 18px; cursor: pointer; min-height: 44px; }
+.btn.primary { background: var(--wait); border-color: var(--wait); color: #fff; font-weight: 700; }
+.wall { background: linear-gradient(160deg, #8ec5f0, #f7a8b8); }
+.wall .notch { background: transparent; color: #fff; }
+.clock { color: #fff; text-align: center; font-size: 56px; font-weight: 300; line-height: 1; margin-top: 30px; }
+.date { color: #fff; text-align: center; font-size: 13px; margin-top: 6px; }
+.notes { display: flex; flex-direction: column; gap: 8px; padding: 26px 10px; }
+.note { background: rgba(255,255,255,.82); color: #1f2a33; border-radius: 18px; padding: 10px 12px; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.note .app { width: 30px; height: 30px; border-radius: 8px; background: #f7a8b8; display: grid; place-items: center; font-size: 15px; }
+.note b { font-size: 12.5px; display: block; }
+.note span { font-size: 12.5px; }
+.note small { color: #55626d; font-size: 10.5px; float: right; }
+.toast { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 7px 14px; border-radius: 99px; font-size: 12px; z-index: 9; white-space: nowrap; }
+
+.typing { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 3px; }
+.typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--work); animation: hop 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes hop { 0%, 60%, 100% { transform: none; opacity: .5 } 30% { transform: translateY(-3px); opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; } .sheet, .scrim { transition: none; } }
+@media (max-width: 360px) { .phone { width: 100%; } }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>kantoku bot をスマホで</h1>
+  <p>試作です。データは作りものです。外へは何も送りません。左の電話は押して動かせます(一覧 → 会話 → 名前を押すと情報)。</p>
+</div>
+
+<div class="stage">
+  <figure class="shot">
+    <div class="phone" id="live">
+      <div class="notch"><span>9:41</span><span>●●●</span></div>
+      <div class="screen" id="liveScreen"></div>
+    </div>
+    <figcaption><b>1. 一覧と会話</b><br>一覧で選ぶと会話が開く。左上の ‹ で戻る。名前を押すと下から情報が出る。</figcaption>
+  </figure>
+
+  <figure class="shot">
+    <div class="phone">
+      <div class="notch"><span>9:41</span><span>●●●</span></div>
+      <div class="screen" id="secretScreen"></div>
+    </div>
+    <figcaption><b>2. 秘密の入力カードは PC だけ</b><br>スマホではカードが見えるだけ。値を貼る欄は出ない。</figcaption>
+  </figure>
+
+  <figure class="shot">
+    <div class="phone">
+      <div class="notch"><span>9:41</span><span>●●●</span></div>
+      <div class="screen">
+        <div class="center">
+          <span id="pairFace"></span>
+          <h2>この電話をつなぐ</h2>
+          <p>PC の kantoku bot で「電話をつなぐ」を押すと、6 けたの数字が出ます。10 分だけ使えます。</p>
+          <div class="code" aria-label="6 けたの数字">
+            <input inputmode="numeric" maxlength="1" value="4"><input inputmode="numeric" maxlength="1" value="8"><input inputmode="numeric" maxlength="1" value="2">
+            <input inputmode="numeric" maxlength="1" value="7"><input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1">
+          </div>
+          <button class="btn primary" type="button">つなぐ</button>
+          <p style="font-size:11.5px">つないだ電話は PC の一覧から外せます。</p>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>3. はじめてつなぐとき</b><br>家の外からは Tailscale を通して開く。最初の 1 回だけ、PC に出た数字を入れる。</figcaption>
+  </figure>
+
+  <figure class="shot">
+    <div class="phone wall">
+      <div class="notch"><span></span><span>●●●</span></div>
+      <div class="clock">9:41</div>
+      <div class="date">11月19日 木曜日</div>
+      <div class="notes">
+        <div class="note"><span class="app">●</span><div><small>いま</small><b>Mochi があなた待ち</b><span>PR を出す前に、どこで試しますか?</span></div></div>
+        <div class="note"><span class="app">●</span><div><small>12分前</small><b>Pico の仕事ができました</b><span>通知の受け口を作り直しました。</span></div></div>
+      </div>
+    </div>
+    <figcaption><b>4. 通知は 2 種類だけ</b><br>「あなた待ち」と「できました」。押すとその会話が開く。</figcaption>
+  </figure>
+</div>
+
+<script>
+// Dummy data. In kantoku bot this comes from ~/.kantoku/<name>/ through the same JSON as the PC page.
+const BOTS = [
+  { name: "Mochi", color: "#f7a8b8", status: "wait", say: "PR を出す前に見てほしいな",
+    desc: "Web アプリの issue を進めて、PR を出すところまで面倒を見ます。",
+    nots: ["本番への反映", "新しい issue を立てること"],
+    memory: [["main に merge すると自動で本番に出る", "11/12"], ["E2E テストは夜だけ回す決まり", "11/15"]],
+    routines: [["朝の見回り", "平日 8:44"]],
+    talk: [
+      { day: "11/18", t: "21:02", from: "bot", text: "検索の並び替え(#128)ができました。検証役も合格です。" },
+      { day: "11/18", t: "21:20", from: "me", text: "ありがとう。初期値は新しい順にしておいて", sent: "届けました" },
+      { day: "11/19", t: "9:40", from: "bot", ask: true, text: "PR を出す前に、どこで試しますか?",
+        choices: [["手元で試す", true], ["ステージングで試す", false], ["試さずに出す", false]] },
+    ] },
+  { name: "Pico", color: "#f5d06b", status: "work", say: "テストを直しているところ",
+    desc: "kantoku そのものを良くする係です。", nots: ["LICENSE の変更"],
+    memory: [["push のたびに版の番号を上げる", "11/18"]], routines: [["困りごと探し", "平日 8:44"]],
+    talk: [{ day: "11/19", t: "9:29", from: "bot", text: "通知の受け口を作り直しました。" }] },
+  { name: "Sora", color: "#8ec5f0", status: "sleep", say: "おやすみ中",
+    desc: "共有ドライブの整理を手伝います。", nots: ["ファイルの削除"], memory: [], routines: [],
+    talk: [{ day: "11/16", t: "16:40", from: "bot", text: "棚卸しが終わりました。" }] },
+];
+const STATUS = { work: "作業中", wait: "あなた待ち", sleep: "おやすみ中" };
+const MOOD = { wait: "smile", work: "focus", sleep: "sleep" };
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const SVG = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) { const e = document.createElementNS(SVG, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+function face(bot, size) {
+  const span = el("span", "face" + (size ? " " + size : ""));
+  span.style.setProperty("--c", bot.color);
+  const s = svgEl("svg", { viewBox: "0 0 48 48", "aria-hidden": "true" });
+  const ink = { stroke: "#1f2a33", "stroke-width": "2", fill: "none", "stroke-linecap": "round" };
+  s.append(svgEl("ellipse", { cx: 12, cy: 27, rx: 3, ry: 2, fill: "#fff", opacity: ".5" }), svgEl("ellipse", { cx: 36, cy: 27, rx: 3, ry: 2, fill: "#fff", opacity: ".5" }));
+  const mood = MOOD[bot.status];
+  if (mood === "sleep") s.append(svgEl("path", { d: "M14 21q3 2 6 0M28 21q3 2 6 0", ...ink }));
+  else s.append(svgEl("circle", { cx: 17, cy: 21, r: 2.6, fill: "#1f2a33" }), svgEl("circle", { cx: 31, cy: 21, r: 2.6, fill: "#1f2a33" }));
+  if (mood === "smile") s.append(svgEl("path", { d: "M19 29q5 5 10 0", ...ink }));
+  else if (mood === "focus") s.append(svgEl("path", { d: "M21 30h6", ...ink }));
+  else s.append(svgEl("circle", { cx: 24, cy: 30, r: 1.8, fill: "#1f2a33" }));
+  span.append(s, el("span", "dot " + bot.status));
+  return span;
+}
+function stateLabel(b) {
+  const span = el("small", null, STATUS[b.status]);
+  if (b.status === "work") { const t = el("span", "typing"); t.append(el("i"), el("i"), el("i")); span.append(t); }
+  return span;
+}
+function toast(screen, text) { const t = el("div", "toast", text); screen.append(t); setTimeout(() => t.remove(), 2000); }
+function now() { const d = new Date(); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); }
+
+// ---------- phone 1: list → chat → sheet ----------
+const live = document.getElementById("liveScreen");
+let current = null;
+
+function showList() {
+  current = null; live.textContent = "";
+  const bar = el("div", "bar"); bar.append(el("span", "title", "kantoku bot"), el("span", "conn", "● 家の PC"));
+  const ul = el("ul", "list");
+  const order = { wait: 0, work: 1, sleep: 2 };
+  [...BOTS].sort((a, b) => order[a.status] - order[b.status]).forEach(b => {
+    const li = el("li"), btn = el("button", "row");
+    const mid = el("div"); mid.append(el("div", "name", b.name), el("div", "say", b.say));
+    btn.append(face(b), mid, b.status === "wait" ? el("span", "pill", "あなた待ち") : el("span"));
+    btn.onclick = () => showChat(b);
+    li.append(btn); ul.append(li);
+  });
+  const foot = el("div", "foot", "この電話は家の PC につないであります");
+  live.append(bar, ul, foot);
+}
+
+function showChat(b) {
+  current = b; live.textContent = "";
+  const bar = el("div", "bar");
+  const back = el("button", "back", "‹"); back.setAttribute("aria-label", "一覧へ戻る"); back.onclick = showList;
+  const hn = el("button", "head-name"); hn.setAttribute("aria-haspopup", "dialog");
+  const txt = el("span"); txt.append(el("strong", null, b.name), stateLabel(b));
+  hn.append(face(b, "s"), txt); hn.onclick = () => openSheet(true);
+  bar.append(back, hn);
+
+  const chat = el("section", "chat"); chat.setAttribute("aria-live", "polite");
+  let day = "";
+  b.talk.forEach(item => {
+    if (item.day !== day) { chat.append(el("div", "day", item.day)); day = item.day; }
+    if (item.from === "me") {
+      const m = el("div", "msg mine"), bub = el("div", "bubble");
+      bub.append(el("span", null, item.text), el("time", null, item.t + " ・ " + item.sent));
+      m.append(bub); chat.append(m); return;
+    }
+    const m = el("div", "msg"), bub = el("div", "bubble" + (item.ask ? " ask" : ""));
+    if (item.ask) bub.append(el("span", "tag", "あなたに聞きたいこと"));
+    bub.append(el("span", null, item.text));
+    if (item.ask && !item.answered) {
+      const col = el("div", "choices");
+      item.choices.forEach(([label, rec]) => {
+        const c = el("button", "choice" + (rec ? " rec" : ""), label + (rec ? "(おすすめ)" : ""));
+        c.onclick = () => answer(b, item, label); col.append(c);
+      });
+      const own = el("button", "choice", "自分で書く");
+      own.onclick = () => { const t = live.querySelector("textarea"); t.placeholder = "答えを書く…"; t.dataset.answer = "1"; t.focus(); };
+      col.append(own); bub.append(col);
+    }
+    if (item.ask && item.answered) bub.append(el("div", "answered", "答えた: " + item.answered));
+    bub.append(el("time", null, item.t));
+    m.append(face(b, "s"), bub); chat.append(m);
+  });
+
+  const form = el("form", "composer");
+  const ta = el("textarea"); ta.rows = 1; ta.placeholder = b.name + " に話しかける…"; ta.setAttribute("aria-label", "メッセージ");
+  const send = el("button", "send", "↑"); send.type = "submit"; send.disabled = true; send.setAttribute("aria-label", "送る");
+  ta.oninput = () => { send.disabled = !ta.value.trim(); ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
+  form.onsubmit = e => {
+    e.preventDefault();
+    const text = ta.value.trim(); if (!text) return;
+    const ask = b.talk.find(x => x.ask && !x.answered);
+    if (ta.dataset.answer && ask) return answer(b, ask, text);
+    const asleep = b.status === "sleep";
+    b.talk.push({ day: "11/19", t: now(), from: "me", text, sent: asleep ? "起きたら読みます" : "届けました" });
+    showChat(b); toast(live, asleep ? "起きたら読みます" : "届けました");
+  };
+  form.append(ta, send);
+
+  const scrim = el("div", "scrim"), sheet = el("aside", "sheet");
+  sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", b.name + " の情報");
+  scrim.onclick = () => openSheet(false);
+  fillSheet(sheet, b);
+  live.append(bar, chat, form, scrim, sheet);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function fillSheet(sheet, b) {
+  sheet.append(el("div", "grab"));
+  const top = el("div", "sheet-top"); top.append(face(b, "big"), el("h2", null, b.name)); sheet.append(top);
+  const body = el("div", "sheet-body");
+  const d = el("div", "sec"); d.append(el("h3", null, "説明"), el("p", null, b.desc), el("p", "pc-only", "やらないこと: " + b.nots.join("、")));
+  const m = el("div", "sec"); m.append(el("h3", null, "覚えていること"));
+  const mu = el("ul"); (b.memory.length ? b.memory : [["まだありません", ""]]).forEach(([f, w]) => { const li = el("li", null, f); if (w) li.append(el("small", null, w + " に覚えた")); mu.append(li); }); m.append(mu);
+  const r = el("div", "sec"); r.append(el("h3", null, "ルーティン"));
+  const ru = el("ul"); (b.routines.length ? b.routines : [["まだありません", ""]]).forEach(([n, w]) => { const li = el("li", null, n); if (w) li.append(el("small", null, w)); ru.append(li); }); r.append(ru);
+  body.append(d, m, r, el("p", "pc-only", "説明・覚えていることを直すのは PC の画面で。"));
+  sheet.append(body);
+}
+function openSheet(on) { live.querySelector(".sheet").classList.toggle("open", on); live.querySelector(".scrim").classList.toggle("open", on); }
+
+function answer(b, item, label) {
+  item.answered = label;
+  b.talk.push({ day: "11/19", t: now(), from: "me", text: label, sent: "届けました" });
+  if (!b.talk.some(x => x.ask && !x.answered)) { b.status = "work"; b.say = "続きから作業中"; }
+  showChat(b); toast(live, "答えを " + b.name + " に届けました");
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && current) openSheet(false); });
+showList();
+
+// ---------- phone 2: secret card, PC only ----------
+(function () {
+  const scr = document.getElementById("secretScreen"), b = { ...BOTS[1], status: "wait" };
+  const bar = el("div", "bar"), back = el("button", "back", "‹"); back.setAttribute("aria-label", "一覧へ戻る");
+  const hn = el("button", "head-name"), txt = el("span"); txt.append(el("strong", null, b.name), stateLabel(b)); hn.append(face(b, "s"), txt);
+  bar.append(back, hn);
+  const chat = el("section", "chat");
+  chat.append(el("div", "day", "11/19"));
+  const m = el("div", "msg"), bub = el("div", "bubble secret");
+  bub.append(el("span", "tag", "秘密を登録してほしい"), el("span", null, "Vercel token"));
+  bub.append(el("code", "cmd", "gh secret set VERCEL_TOKEN --repo example-org/web"));
+  const line = el("div", "lockline"); line.append(el("span", null, "🔒"), el("span", null, "秘密の値は PC の kantoku bot でだけ入れられます。帰ったら PC で開いてください。"));
+  bub.append(line, el("time", null, "9:35 ・ あと 25 分"));
+  m.append(face(b, "s"), bub); chat.append(m);
+  const form = el("form", "composer"), ta = el("textarea"); ta.rows = 1; ta.placeholder = b.name + " に話しかける…"; ta.setAttribute("aria-label", "メッセージ");
+  const send = el("button", "send", "↑"); send.disabled = true; send.setAttribute("aria-label", "送る"); form.append(ta, send);
+  form.onsubmit = e => e.preventDefault();
+  scr.append(bar, chat, form);
+})();
+document.getElementById("pairFace").append(face(BOTS[0], "big"));
+</script>
+</body>
+</html>
